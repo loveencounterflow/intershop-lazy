@@ -158,6 +158,8 @@ declare
       -- ...................................................................................................
       exception when sqlstate 'LZ120' then
         raise notice '(sqlstate) sqlerrm: (%) %', sqlstate, sqlerrm;
+        -- raise notice 'error:  %', row( sqlstate, sqlerrm )::LAZY.error;
+        -- raise notice 'result: %', row( null, sqlstate, sqlerrm )::LAZY.jsonb_result;
         update LAZY_X.probes_and_matchers_2 set result_error = sqlstate where id = ¶row.id;
       end; end loop;
     end; $$;

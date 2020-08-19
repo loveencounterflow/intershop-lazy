@@ -75,7 +75,6 @@ create function MYSCHEMA.get_product_0( ¶n integer, ¶factor integer )
     raise sqlstate 'XXX02' using message = format( '#XXX02-1 Key Error: unable to retrieve result for ¶n: %s, ¶factor: %s', ¶n, ¶factor );
     end; $$;
 
--- select * from CATALOG.catalog where schema = 'lazy';
 select LAZY.create_lazy_function(
   function_name   => 'MYSCHEMA.get_product_1',          -- name of function to be created
   parameter_names => '{¶n,¶factor}',
@@ -95,10 +94,11 @@ select LAZY.create_lazy_function(
   return_type     => 'integer',                         -- applied to cached value or value returned by caster
   bucket          => null,                              -- optional, defaults to `function_name`
   get_key         => null,                              -- optional, default is JSON list / object of values
-  get_update      => '¶n * ¶factor',                    -- optional, this x-or `perform_update` must be given
+  get_update      => 'case ¶n when 13 then null else ¶n * ¶factor end',  -- optional, this x-or `perform_update` must be given
   perform_update  => null,                              -- optional, this x-or `get_update` must be given
   caster          => 'cast_my_value'                    -- optional, to transform JSONB value in to `return_type` (after `caster()` called where present)
   );
+-- select * from CATALOG.catalog where schema = 'myschema';
 
 select * from LAZY.facets order by bucket, key;
 select * from MYSCHEMA.get_product_1( 4, 12 );
@@ -106,12 +106,7 @@ select * from MYSCHEMA.get_product_1( 5, 12 );
 select * from MYSCHEMA.get_product_1( 6, 12 );
 select * from LAZY.facets order by bucket, key;
 select * from MYSCHEMA.products;
-select * from MYSCHEMA.get_product_1( 13, 12 );
-
-/* ###################################################################################################### */
-\echo :red ———{ :filename 22 }———:reset
-\quit
-
+-- select * from MYSCHEMA.get_product_1( 13, 12 );
 
 
 -- =========================================================================================================
@@ -119,94 +114,93 @@ select * from MYSCHEMA.get_product_1( 13, 12 );
 -- ---------------------------------------------------------------------------------------------------------
 \echo :signal ———{ :filename 1 }———:reset
 create table LAZY_X.probes_and_matchers_1 (
+  id        bigint generated always as identity primary key,
   title     text,
   probe     text,
   matcher   text,
   result    text );
 
 create table LAZY_X.probes_and_matchers_2 (
-  title     text,
-  probe_1   text,
-  probe_2   text,
-  matcher   text,
-  result    text );
-
--- select ( '{}'::jsonb )->'x';
--- select pg_typeof( ( '{}'::jsonb )->'x' );
+  id            bigint generated always as identity primary key,
+  title         text,
+  probe_1       text,
+  probe_2       text,
+  matcher       text,
+  error         text,
+  result        text,
+  result_error  text );
 
 -- ---------------------------------------------------------------------------------------------------------
 \echo :signal ———{ :filename 1 }———:reset
-insert into LAZY_X.probes_and_matchers_1 ( title, probe, matcher ) values
-  ( 'escape_text',               'helo',         'helo'                      ),
-  ( 'escape_text',               'helo>>>world', 'helo&gt;&gt;&gt;world'     ),
-  ( 'escape_text',               '<13&14>',      '&lt;13&amp;14&gt;'         ),
-  ( 'escape_text',               '<helo',        '&lt;helo'                  ),
-  ( 'as_attributes',             '{"foo":"bar"}', 'foo=''bar'''                  ),
-  ( 'as_attributes',             '{"foo":"bar","height":33}', 'foo=''bar'' height=''33'''                  ),
-  ( 'tag', '{"$key":"<tag","name":"div","atrs":{"width":25,"height":120}}',              '<div width=''25'' height=''120''>'        ),
-  ( 'tag', '{"$key":">tag","name":"div","atrs":{"width":25,"height":120}}',              '</div>'                                   ),
-  ( 'tag', '{"$key":"^tag","name":"div","atrs":{"width":25,"height":120}}',              '<div width=''25'' height=''120''></div>'  ),
-  ( 'tag', '{"$key":"^tag","name":"div","short":true,"atrs":{"width":25,"height":120}}', '<div width=''25'' height=''120''/>'       ),
-  ( 'tag', '{"$key":"<tag","name":"div"}',                                               '<div>'                                    ),
-  ( 'tag', '{"$key":">tag","name":"div"}',                                               '</div>'                                   ),
-  ( 'tag', '{"$key":"^tag","name":"div"}',                                               '<div></div>'                              ),
-  ( 'tag', '{"$key":"^tag","name":"div","short":true}',                                  '<div/>'                                   ),
-  ( 'escape_attribute_value', '<"helo">',        '''&lt;"helo"&gt;'''                  ),
-  ( 'escape_attribute_value', '<''helo''>',      '''&lt;&#39;helo&#39;&gt;'''                  );
-update LAZY_X.probes_and_matchers_1 set result = LAZY.escape_text( probe ) where title = 'escape_text';
-update LAZY_X.probes_and_matchers_1 set result = LAZY.escape_attribute_value( probe ) where title = 'escape_attribute_value';
-update LAZY_X.probes_and_matchers_1 set result = LAZY.as_attributes( probe::jsonb ) where title = 'as_attributes';
-update LAZY_X.probes_and_matchers_1 set result = LAZY.tag( probe::jsonb ) where title = 'tag';
+-- insert into LAZY_X.probes_and_matchers_1 ( title, probe, matcher ) values
+--   ( 'get_product_1',             '{12,12}',         'helo'                      );
+-- update LAZY_X.probes_and_matchers_1 set result = LAZY.escape_text( probe ) where title = 'escape_text';
 
-insert into LAZY_X.probes_and_matchers_2 ( title, probe_1, probe_2, matcher ) values
-  ( 'as_attribute', 'width', '25',    'width=''25'''                  );
-update LAZY_X.probes_and_matchers_2 set result = LAZY.as_attribute( probe_1, probe_2 ) where title = 'as_attribute';
+insert into LAZY_X.probes_and_matchers_2 ( title, probe_1, probe_2, matcher, error, result_error ) values
+  ( 'get_product_1', '0',   '1',      '0',   null,      null             ),
+  ( 'get_product_1', '1',   '1',      '1',   null,      null             ),
+  ( 'get_product_1', '13',  '12',     null,  'LZ120',   null             ),
+  ( 'get_product_1', '12',  '12',     '144', null,      null             ),
+  ( 'get_product_2', '0',   '1',      '0',   null,      null             ),
+  ( 'get_product_2', '1',   '1',      '1',   null,      null             ),
+  ( 'get_product_2', '13',  '12',     null,  'LZ120',   null             ),
+  ( 'get_product_2', '12',  '12',     '144', null,      null             );
+
+-- ---------------------------------------------------------------------------------------------------------
+do $$
+declare
+    ¶row    record;
+    ¶result text;
+  begin
+    for ¶row in ( select * from LAZY_X.probes_and_matchers_2 where title = 'get_product_1' ) loop begin
+      ¶result = MYSCHEMA.get_product_1( ¶row.probe_1::integer, ¶row.probe_2::integer )::text;
+      update LAZY_X.probes_and_matchers_2 set result = ¶result where id = ¶row.id;
+      -- ...................................................................................................
+      exception when sqlstate 'LZ120' then
+        raise notice '(sqlstate) sqlerrm: (%) %', sqlstate, sqlerrm;
+        update LAZY_X.probes_and_matchers_2 set result_error = sqlstate where id = ¶row.id;
+      end; end loop;
+    end; $$;
+
+-- ---------------------------------------------------------------------------------------------------------
+do $$
+declare
+    ¶row    record;
+    ¶result text;
+  begin
+    for ¶row in ( select * from LAZY_X.probes_and_matchers_2 where title = 'get_product_2' ) loop begin
+      ¶result = MYSCHEMA.get_product_2( ¶row.probe_1::integer, ¶row.probe_2::integer )::text;
+      update LAZY_X.probes_and_matchers_2 set result = ¶result where id = ¶row.id;
+      -- ...................................................................................................
+      exception when sqlstate 'LZ120' then
+        raise notice '(sqlstate) sqlerrm: (%) %', sqlstate, sqlerrm;
+        update LAZY_X.probes_and_matchers_2 set result_error = sqlstate where id = ¶row.id;
+      end; end loop;
+    end; $$;
 
 -- ---------------------------------------------------------------------------------------------------------
 insert into INVARIANTS.tests select
-    'LAZY'                                           as module,
-    r1.title                                        as title,
-    row( result, matcher )::text                    as values,
-    ( r1.result = r1.matcher )                      as is_ok
-  from LAZY_X.probes_and_matchers_1 as r1;
+    'LAZY'                                                              as module,
+    title                                                               as title,
+    row( result, matcher, result_error, error )::text                   as values,
+    case when ( error is null )
+      then ( result::integer  = matcher::integer  )
+      else ( result_error     = error             ) end                 as is_ok
+  from LAZY_X.probes_and_matchers_2 as r1;
 
--- ---------------------------------------------------------------------------------------------------------
-insert into INVARIANTS.tests select
-    'LAZY'                                           as module,
-    r1.title                                        as title,
-    row( result, matcher )::text                    as values,
-    ( r1.result = r1.matcher )                      as is_ok
-  from LAZY_X.probes_and_matchers_1 as r1;
-
-select * from LAZY_X.probes_and_matchers_1;
-select * from INVARIANTS.tests;
+select * from LAZY_X.probes_and_matchers_2 order by id;
+-- select * from INVARIANTS.tests;
 select * from INVARIANTS.violations;
+-- select * from MYSCHEMA.get_product_2( 60, 3 );
 -- select count(*) from ( select * from INVARIANTS.violations limit 1 ) as x;
 -- select count(*) from INVARIANTS.violations;
 do $$ begin perform INVARIANTS.validate(); end; $$;
 
-( select LAZY.tag( '{"$key":"<tag","name":"div","atrs":{"width":25,"height":120}}'::jsonb ) ) union all
-( select LAZY.tag( '{"$key":">tag","name":"div","atrs":{"width":25,"height":120}}'::jsonb ) ) union all
-( select LAZY.tag( '{"$key":"^tag","name":"div","atrs":{"width":25,"height":120}}'::jsonb ) ) union all
-( select LAZY.tag( '{"$key":"^tag","name":"div","short":true,"atrs":{"width":25,"height":120}}'::jsonb ) ) union all
-( select null where false );
 
 
 /* ###################################################################################################### */
-\echo :red ———{ :filename 7 }———:reset
+\echo :red ———{ :filename 22 }———:reset
 \quit
-
-
-
-
--- do $$ begin perform INVARIANTS.validate(); end; $$;
-
--- -- instead.
-
-
-
-
-
 
 
 

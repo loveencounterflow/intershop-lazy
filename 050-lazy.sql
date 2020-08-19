@@ -93,7 +93,7 @@ create function LAZY._create_lazy_function(
     if ( get_update is not null ) then
       R  := R  || format( e'  ¶value := %s;\n', get_update );
       R  := R  ||         e'  insert into LAZY.facets ( bucket, key, value ) values \n';
-      R  := R  ||         e'    ( ¶bucket, ¶key, to_jsonb( ¶value ) );              \n';
+      R  := R  || format( e'    ( %L, ¶key, to_jsonb( ¶value ) );                   \n', ¶bucket );
       R  := R  || format( e'  if ¶value is not null then return ¶value::%s; end if; \n', return_type );
     else
       R  := R  || format( e'  perform %s( %s );                                     \n', perform_update, ¶n );
@@ -102,7 +102,7 @@ create function LAZY._create_lazy_function(
     -- .....................................................................................................
     R  := R  ||         e'  -- -----------------------------------------------------\n';
     R  := R  ||         e'  raise sqlstate ''LZ120'' using                          \n';
-    R  := R  ||         e'    message = format( ''#LZ120-1 Key Error: '' ||         \n';
+    R  := R  ||         e'    message = format( ''#LZ120 Key Error: '' ||           \n';
     R  := R  || format( e'    ''unable to retrieve result for %s'', %s );           \n', ¶x, ¶n );
     R  := R  ||         e'  end; $f$;';
     -- .....................................................................................................

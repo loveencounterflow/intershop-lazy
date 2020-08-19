@@ -1,0 +1,7 @@
+{
+  "intershop-package-version": "1.0.0",
+  "files": {
+    "db/050-lazy.sql":                      "rebuild"
+  }
+}
+

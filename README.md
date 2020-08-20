@@ -37,18 +37,17 @@ functional sense.
 Value producers *must* return value of type `LAZY.jsonb_result` which is a composite type that value
 producers can communicate the 'happy' or 'sad' outcomes of computations. Since the field for the result
 proper (named `ok` similar to Rust's `Result` type) has type `jsonb`, the set of all happy results is the
-set of values that can be represented by PostGreSQL's `jsonb` data type.
+set of values that can be represented by PostGreSQL's `jsonb` data type. More specifically, all return
+values `R` must be OK to be used in the expression `to_jsonb( R )`. In case this requirement cannot be met,
+there's the possibility to pass the name of a casting function (argument `caster` to
+`LAZY.create_lazy_producer()`) that can be used to turn e.g. a serialization or an object structure back
+into a value of the desired type.
 
 Value Producers should be immutable functions that never throw under normal conditions; instead, use
 `LAZY.sad( 'message' )` to communicate that a given combination of arguments should cause an exception. This
 exception will be stored just like a regular result would and will lead to same exception whenever the same
 combination of values is requested later.
 
-One further restriction is that whatever Value Producers return must be expressible with PostGreSQL's
-`jsonb` data type; more specifically, all return values `R` must be OK to be used in the expression
-`to_jsonb( R )`. In case this requirement cannot be met, there's the possibility to pass the name of a
-casting function (argument `caster`) that can be used to turn e.g. a serialization or an object structure
-back into a value of the desired type.
 
 
 * `called on null input`

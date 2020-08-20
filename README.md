@@ -194,6 +194,7 @@ select * from MYSCHEMA.get_product( 5, 12 );
 select * from MYSCHEMA.get_product( 6, 12 );
 select * from MYSCHEMA.get_product( 60, 3 );
 select * from MYSCHEMA.get_product( 13, 13 );
+select * from LAZY.facets order by bucket, key;
 ```
 
 This will produce the following output:
@@ -245,24 +246,24 @@ This will produce the following output:
 ╚══════════════════════╧══════════╧════════╝
 ```
 
+As can be seen, not only does the multiplicator excel in integer arithmetics, it also keeps track of past
+results. If we were to repeat any of the above calls, no additional calls to `get_product()` would be
+performed, nor would any lines be added to `LAZY.facets`. That can save tons of cycles and waiting time!
+
+Keep in mind that *almost* the same effect can be achieved in PostGreSQL by declaring a function `immutable`
+since PG caches results to immutable functions internally. However, while those caches will not survive DB
+sessions, data stored by InterShop Lazy will.
+
+Also observe that `get_product()` will refuse to compute multiples of `13`; this is where the `null` result
+for `get_product( 13, 13 )` came from. Had we requested the result of `13 * 12` instead, an exception would
+have been raised:
 
 ```sql
-select * from LAZY.facets order by bucket, key;
 select * from MYSCHEMA.get_product( 13, 12 );
 ```
 
 
 ```
-╔════╤════════╤═════════╗
-║ n  │ factor │ product ║
-╠════╪════════╪═════════╣
-║  4 │     12 │      48 ║
-║  5 │     12 │      60 ║
-║  6 │     12 │      72 ║
-║ 60 │      3 │     180 ║
-║ 13 │     13 │       ∎ ║
-╚════╧════════╧═════════╝
-
 psql:lazy.demo-1.sql:83: ERROR:  LZE00 will not produce even multiples of 13
 CONTEXT:  PL/pgSQL function lazy.unwrap(lazy.jsonb_result) line 8 at RAISE
 PL/pgSQL function myschema.get_product(integer,integer) line 16 at RETURN

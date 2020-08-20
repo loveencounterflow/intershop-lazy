@@ -69,19 +69,27 @@ its field `error` holds an error message. In either case, the returned value wil
 
 ## Methods to Create Lazy Value Producers
 
-```sql
-LAZY.create_lazy_producer(
-  function_name     text,               -- name of function to be created
-  parameter_names   text[],
-  parameter_types   text[],
-  return_type       text,               -- applied to cached value or value returned by caster
-  bucket            text default null,  -- optional, defaults to `function_name`
-  get_key           text default null,  -- optional, default is JSON list / object of values
-  get_update        text default null,  -- optional, this x-or `perform_update` must be given
-  perform_update    text default null,  -- optional, this x-or `get_update` must be given
-  caster            text default null ) -- optional, to transform JSONB value in to `return_type` (after `caster()` called where present)
-  returns void volatile called on null input language plpgsql as $$
-```
+`LAZY.create_lazy_producer()` (`returns void`) will create a function that uses table `LAZY.facets` to produce values in a
+lazy fashion. Its arguments are:
+
+* **`function_name`** (**`text`**)—name of function to be created.
+* **`parameter_names`** (**`text[]`**)—names of arguments to the getter.
+* **`parameter_types`** (**`text[]`**)—types of arguments to the getter.
+* **`return_type`** (**`text,`**)—applied to cached value or value returned by caster.
+* **`bucket`** (**`text default null`**)—name of bucket; defaults to `function_name`.
+* **`get_key`** (**`text default null`**)—optional, default is JSON list / object of values.
+* **`get_update`** (**`text default null`**)—optional, this x-or `perform_update` must be given.
+* **`perform_update`** (**`text default null`**)—optional, this x-or `get_update` must be given.
+* **`caster`** (**`text default null`**)—optional, to transform JSONB value in to `return_type` (after `caster()` called where present).
+
+Points to keep in mind:
+
+* All names used in calls to `create_lazy_producer()` will be used as-is without any kind of sanity check or
+  quoting.
+* The same goes for the other arguments.
+* Usage of `create_lazy_producer()` is inherently unsafe; therefore, no untrusted data (such as coming from
+  a web form as data source) should be used to call this function (although the function that
+  `create_lazy_producer()` creates is itself deemed safe).
 
 ## Private Methods
 
@@ -152,16 +160,14 @@ All access to the value producer should go through the function that is created 
 of course inspect `LAZY.facets()` where computed values are kept). `create_lazy_producer()` takes quite
 a few arguments, but half of them are optional. The arguments are:
 
-* **`function_name`** (**`text`**)—name of function to be created.
-* **`parameter_names`** (**`text[]`**)—names of arguments to the getter.
-* **`parameter_types`** (**`text[]`**)—types of arguments to the getter.
-* **`return_type`** (**`text,`**)—applied to cached value or value returned by caster.
-* **`bucket`** (**`text default null`**)—name of bucket; defaults to `function_name`.
-* **`get_key`** (**`text default null`**)—optional, default is JSON list / object of values.
-* **`get_update`** (**`text default null`**)—optional, this x-or `perform_update` must be given.
-* **`perform_update`** (**`text default null`**)—optional, this x-or `get_update` must be given.
-* **`caster`** (**`text default null`**)—optional, to transform JSONB value in to `return_type` (after `caster()` called where present).
-
+```sql
+select LAZY.create_lazy_producer(
+  function_name   => 'MYSCHEMA.get_product',
+  parameter_names => '{¶n,¶factor}',
+  parameter_types => '{integer,integer}',
+  return_type     => 'integer',
+  get_update      => 'MYSCHEMA.compute_product' );
+```
 
 # To Do
 

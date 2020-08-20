@@ -15,6 +15,7 @@
 - [Complete Demo](#complete-demo)
   - [Step 1: Write a Value Producer](#step-1-write-a-value-producer)
   - [Step 2: Create a Lazy Producer](#step-2-create-a-lazy-producer)
+  - [Use the Lazy Value Producer](#use-the-lazy-value-producer)
 - [To Do](#to-do)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -139,7 +140,7 @@ create function MYSCHEMA.compute_product( ¶n integer, ¶factor integer )
 In the present example, however, we will use a slightly more involved one: we want to raise errors whenever
 one of the multiplicands is `null`, and another one if the first one (called `¶n` here) is `13` and the
 second one (`¶factor`) is even. If `¶n` is `13` and `¶factor` is odd, we want the outcome to be `null`; this
-covers all of the behavoral variants possible:
+covers all of the behavioral variants possible:
 
 ```sql
 create function MYSCHEMA.compute_product( ¶n integer, ¶factor integer )
@@ -169,6 +170,104 @@ select LAZY.create_lazy_producer(
   return_type     => 'integer',
   get_update      => 'MYSCHEMA.compute_product' );
 ```
+
+The first argument here is the name of the function that computes values that have not been inserted into
+the caching table `LAZY.facets` already; the next 3 arguments basically repeat the declarative part to that
+function and will possibly be auto-generated in a future version of InterShop Lazy.
+
+There's just one more required argument, either `get_update` or `perform_update`; exactly one of these two
+must be set to the name of a function that either
+
+* in the case of `get_update()`, will return exactly one result for each set of inputs, or
+* in the case of `perform_update()`, may insert as many rows into `LAZY.facets` as seen fit when called. In
+  case `perform_update()` happened to not produce a result line that matches the input arguments, a line
+  with result `null` will be auto-generated.
+
+## Use the Lazy Value Producer
+
+We're now ready to put our caching, lazy multiplicator device to use:
+
+```sql
+select * from LAZY.facets order by bucket, key;
+select * from MYSCHEMA.get_product( 4, 12 );
+select * from MYSCHEMA.get_product( 5, 12 );
+select * from MYSCHEMA.get_product( 6, 12 );
+select * from MYSCHEMA.get_product( 60, 3 );
+select * from MYSCHEMA.get_product( 13, 13 );
+```
+
+This will produce the following output:
+
+```
+╔════════╤═════╤═══════╗
+║ bucket │ key │ value ║
+╠════════╪═════╪═══════╣
+╚════════╧═════╧═══════╝
+
+╔═════════════╗
+║ get_product ║
+╠═════════════╣
+║          48 ║
+╚═════════════╝
+
+╔═════════════╗
+║ get_product ║
+╠═════════════╣
+║          60 ║
+╚═════════════╝
+
+╔═════════════╗
+║ get_product ║
+╠═════════════╣
+║          72 ║
+╚═════════════╝
+
+╔═════════════╗
+║ get_product ║
+╠═════════════╣
+║         180 ║
+╚═════════════╝
+
+╔═════════════╗
+║ get_product ║
+╠═════════════╣
+║           ∎ ║
+╚═════════════╝
+
+╔══════════════════════╤══════════╤════════╗
+║        bucket        │   key    │ value  ║
+╠══════════════════════╪══════════╪════════╣
+║ MYSCHEMA.get_product │ [4, 12]  │ (48,)  ║
+║ MYSCHEMA.get_product │ [5, 12]  │ (60,)  ║
+║ MYSCHEMA.get_product │ [6, 12]  │ (72,)  ║
+║ MYSCHEMA.get_product │ [13, 13] │ (,)    ║
+║ MYSCHEMA.get_product │ [60, 3]  │ (180,) ║
+╚══════════════════════╧══════════╧════════╝
+```
+
+
+```sql
+select * from LAZY.facets order by bucket, key;
+select * from MYSCHEMA.get_product( 13, 12 );
+```
+
+
+```
+╔════╤════════╤═════════╗
+║ n  │ factor │ product ║
+╠════╪════════╪═════════╣
+║  4 │     12 │      48 ║
+║  5 │     12 │      60 ║
+║  6 │     12 │      72 ║
+║ 60 │      3 │     180 ║
+║ 13 │     13 │       ∎ ║
+╚════╧════════╧═════════╝
+
+psql:lazy.demo-1.sql:83: ERROR:  LZE00 will not produce even multiples of 13
+CONTEXT:  PL/pgSQL function lazy.unwrap(lazy.jsonb_result) line 8 at RAISE
+PL/pgSQL function myschema.get_product(integer,integer) line 16 at RETURN
+```
+
 
 # To Do
 

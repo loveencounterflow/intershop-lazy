@@ -136,21 +136,18 @@ create function LAZY._create_lazy_producer(
       from unnest( parameter_names ) with ordinality as r1 ( name, nr ) );
     ¶n := ( select string_agg( n, ', ' ) from unnest( parameter_names ) as x ( n ) );
     ¶x := ( select string_agg( n || ': %s', ', ' ) from unnest( parameter_names ) as x ( n ) );
-    ¶p := '/*-(¶p-*/ ' || ¶p || ' /*-¶p)-*/';
-    ¶n := '/*-(¶n-*/ ' || ¶n || ' /*-¶n)-*/';
-    ¶x := '/*-(¶x-*/ ' || ¶x || ' /*-¶x)-*/';
     -- .....................................................................................................
     if get_key is null then
-      ¶k := format( '/*-(¶k1-*/ jsonb_build_array( %s ) /*-¶k1)-*/', ¶n );
+      ¶k := format( e'jsonb_build_array( %s )', ¶n );
     else
-      ¶k := format( '/*-(¶k2-*/ %s( %s ) /*-¶k2)-*/', get_key, ¶n );
+      ¶k := format( e'%s( %s )', get_key, ¶n );
       end if;
     -- .....................................................................................................
     ¶bucket :=  coalesce( bucket, function_name );
     if ( get_update is not null ) then
-      ¶v      :=  format( e'/*^(¶v-*/ %s( LAZY.unwrap( ¶value ) )::%s /*-¶v)-*/', coalesce( caster, '' ), return_type );
+      ¶v      :=  format( e'%s( LAZY.unwrap( ¶value ) )::%s', coalesce( caster, '' ), return_type );
     else
-      ¶v      :=  format( e'/*^(¶v-*/ %s( LAZY.unwrap( ¶rows[ 1 ] ) )::%s /*-¶v)-*/', coalesce( caster, '' ), return_type );
+      ¶v      :=  format( e'%s( LAZY.unwrap( ¶rows[ 1 ] ) )::%s', coalesce( caster, '' ), return_type );
       end if;
     -- .....................................................................................................
     if ( get_update is null ) and ( perform_update is null ) then

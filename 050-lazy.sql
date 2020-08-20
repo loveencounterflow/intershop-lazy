@@ -16,18 +16,97 @@ begin transaction;
 \echo :signal ———{ :filename 1 }———:reset
 drop schema if exists LAZY cascade; create schema LAZY;
 
+
+-- =========================================================================================================
+--
 -- ---------------------------------------------------------------------------------------------------------
 \echo :signal ———{ :filename 2 }———:reset
+create type LAZY.jsonb_result as (
+  ok          jsonb,
+  error       text );
+
+-- ---------------------------------------------------------------------------------------------------------
+\echo :signal ———{ :filename 3 }———:reset
 create table LAZY.facets (
-  bucket        text    not null,
-  key           jsonb   not null,
-  value         jsonb,
+  bucket        text              not null,
+  key           jsonb             not null,
+  value         LAZY.jsonb_result not null,
   primary key ( bucket, key ) );
 
 -- ---------------------------------------------------------------------------------------------------------
-\echo :signal ———{ :filename 8 }———:reset
+create function LAZY.is_happy( LAZY.jsonb_result ) returns boolean immutable strict language sql as
+  $$ select ( $1.error is null ); $$;
+
+-- ---------------------------------------------------------------------------------------------------------
+create function LAZY.is_sad( LAZY.jsonb_result ) returns boolean immutable strict language sql as
+  $$ select ( $1.error is not null ); $$;
+
+-- ---------------------------------------------------------------------------------------------------------
+create function LAZY.happy( ok jsonb ) returns LAZY.jsonb_result immutable strict language sql as
+  $$ select ( ok, null )::LAZY.jsonb_result; $$;
+
+-- ---------------------------------------------------------------------------------------------------------
+create function LAZY.happy( ok anyelement ) returns LAZY.jsonb_result immutable strict language sql as
+  $$ select ( to_jsonb( ok ), null )::LAZY.jsonb_result; $$;
+
+-- ---------------------------------------------------------------------------------------------------------
+create function LAZY.sad( error text ) returns LAZY.jsonb_result immutable strict language sql as
+  $$ select ( null, error )::LAZY.jsonb_result; $$;
+
+-- ---------------------------------------------------------------------------------------------------------
+create function LAZY.unwrap( LAZY.jsonb_result )
+  returns jsonb immutable strict language plpgsql as $$
+  declare
+    ¶error  text;
+  begin
+    if LAZY.is_happy( $1 ) then return $1.ok; end if;
+    ¶error  := coalesce( $1.error, 'an unspecified error occurred during a lazy value retrieval' );
+    ¶error  := 'LZE00' || ' ' || ¶error;
+    raise sqlstate 'LZE00' using message = ¶error;
+    end; $$;
+
+-- ---------------------------------------------------------------------------------------------------------
+create function LAZY._normalize( LAZY.jsonb_result ) returns LAZY.jsonb_result immutable language sql as
+  $$ select
+    case when ( $1 is not distinct from null ) or ( $1.ok = 'null'::jsonb )
+      then ( null::jsonb, null )::LAZY.jsonb_result
+      else $1 end; $$;
+
+-- ---------------------------------------------------------------------------------------------------------
+create function LAZY._normalize( LAZY.facets ) returns LAZY.facets immutable language sql as
+  $$ select
+    case when ( $1.value.error is distinct from null )
+      then ( $1.bucket, $1.key, ( null::jsonb, $1.value.error ) )::LAZY.facets
+      else ( $1.bucket, $1.key, LAZY._normalize( $1.value ) )::LAZY.facets end; $$;
+
+comment on function LAZY._normalize( LAZY.jsonb_result ) is 'Given a `LAZY.jsonb_result` value or `null`,
+return a LAZY.jsonb_result value with all three fields set to null if either the value is `null`, or its
+`ok` field is `null` or JSONB `''null''`; otherwise, return the value itself.';
+
+
+-- =========================================================================================================
+--
+-- ---------------------------------------------------------------------------------------------------------
+\echo :signal ———{ :filename 3 }———:reset
+create function LAZY.on_before_update_facets() returns trigger language plpgsql as $$ begin
+  raise sqlstate 'LZ104' using message = format( 'illegal to update LAZY.facets' ); end; $$;
+create trigger on_before_update_facets before update on LAZY.facets
+  for each row execute procedure LAZY.on_before_update_facets();
+
+-- ---------------------------------------------------------------------------------------------------------
+\echo :signal ———{ :filename 3 }———:reset
+create function LAZY.on_before_insert_facets() returns trigger language plpgsql as $$ begin
+  return LAZY._normalize( new ); end; $$;
+create trigger on_before_insert_facets before insert on LAZY.facets
+  for each row execute procedure LAZY.on_before_insert_facets();
+
+
+-- =========================================================================================================
+--
+-- ---------------------------------------------------------------------------------------------------------
+\echo :signal ———{ :filename 4 }———:reset
 -- ### TAINT could/should be procedure? ###
-create function LAZY._create_lazy_function(
+create function LAZY._create_lazy_producer(
   function_name     text,
   parameter_names   text[],
   parameter_types   text[],

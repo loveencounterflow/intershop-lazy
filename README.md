@@ -114,8 +114,8 @@ value producer for multiplication could look as simple as this:
 
 ```sql
 create function MYSCHEMA.compute_product( ¶n integer, ¶factor integer )
-  returns LAZY.jsonb_result immutable called on null input language plpgsql as $$ declare
-  begin return LAZY.happy( ¶n * ¶factor ); end; $$;
+  returns LAZY.jsonb_result immutable called on null input language sql as $$
+  select LAZY.happy( ¶n * ¶factor ); $$;
 ```
 
 In the present example, however, we will use a slightly more involved one: we want to raise errors whenever
@@ -128,18 +128,12 @@ create function MYSCHEMA.compute_product( ¶n integer, ¶factor integer )
   returns LAZY.jsonb_result immutable called on null input language plpgsql as $$ declare
   begin
     if ( ¶n is not distinct from null ) or ( ¶factor is not distinct from null ) then
-      return LAZY.sad( 'will not produce result if any argument is null' );
-      end if;
+      return LAZY.sad( 'will not produce result if any argument is null' ); end if;
     if ¶n != 13 then
-      return LAZY.happy( ¶n * ¶factor );
-    else
-      if ( ¶factor % 2 ) = 0 then
-        return LAZY.sad( 'will not produce even multiples of 13' );
-      else
-        return null;
-        end if;
-      end if;
-    end; $$;
+      return LAZY.happy( ¶n * ¶factor ); end if;
+    if ( ¶factor % 2 ) = 0 then
+      return LAZY.sad( 'will not produce even multiples of 13' ); end if;
+    return null; end; $$;
 ```
 
 

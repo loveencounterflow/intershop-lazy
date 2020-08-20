@@ -13,6 +13,7 @@
   - [Private Methods](#private-methods)
 - [Complete Demo](#complete-demo)
   - [Step 1: Write a Value Producer](#step-1-write-a-value-producer)
+  - [Step 2: Create a Lazy Producer](#step-2-create-a-lazy-producer)
 - [To Do](#to-do)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -101,12 +102,20 @@ The below code can be seen in action by running `psql -f lazy.demo-1.sql`.
 ## Step 1: Write a Value Producer
 
 The first thing to do when one wants to use lazy evaluation with InterShop Lazy is to provide a function
-that accepts arguments as required and that returns a `LAZY.jsonb_result` value. `LAZY.jsonb_result`
-provides one field for happy results and one for sad results that will cause an exception. Value Producers
-should be immutable functions that never throw under normal conditions; instead, use `LAZY.sad( 'message' )`
-to communicate that a given combination of arguments should cause an exception. This exception will be
-stored just like a regular result would and will lead to same exception whenever the same combination of
-values is requested later.
+that accepts arguments as required and that returns a `LAZY.jsonb_result` value. The convenience functions
+`LAZY.happy()` and `LAZY.sad()` make it easy to produce such results; in addition, SQL `null` may be
+returned as-is to signal cases where consumers should receive a `null` for a given computation.
+
+Value Producers should be immutable functions that never throw under normal conditions; instead, use
+`LAZY.sad( 'message' )` to communicate that a given combination of arguments should cause an exception. This
+exception will be stored just like a regular result would and will lead to same exception whenever the same
+combination of values is requested later.
+
+One further restriction is that whatever Value Producers return must be expressible with PostGreSQL's
+`jsonb` data type; more specifically, all return values `R` must be OK to be used in the expression
+`to_jsonb( R )`. In case this requirement cannot be met, there's the possibility to define a casting
+function that can be used to turn e.g. a serialization or an object structure back into a value of the
+desired type.
 
 Of course, using lazy evaluation makes only sense when one is dealing with costly computations, but for the
 sake of example, let's just produce arithmetic products here (but with a quirk to show off features). A
@@ -136,19 +145,22 @@ create function MYSCHEMA.compute_product( ¶n integer, ¶factor integer )
     return null; end; $$;
 ```
 
+## Step 2: Create a Lazy Producer
 
-```sql
-select LAZY.create_lazy_producer(
-  function_name   => 'MYSCHEMA.get_product',            -- name of function to be created
-  parameter_names => '{¶n,¶factor}',
-  parameter_types => '{integer,integer}',
-  return_type     => 'integer',                         -- applied to cached value or value returned by caster
-  get_key         => null,                              -- optional, default is JSON list / object of values
-  get_update      => 'MYSCHEMA.compute_product',        -- optional, this x-or `perform_update` must be given
-  perform_update  => null,                              -- optional, this x-or `get_update` must be given
-  caster          => null                               -- optional, to transform JSONB value in to `return_type` (after `caster()` called where present)
-  );
-```
+All access to the value producer should go through the function that is created by
+`LAZY.create_lazy_producer()`; this is the only one that data consumers will have to use (although they can
+of course inspect `LAZY.facets()` where computed values are kept). `create_lazy_producer()` takes quite
+a few arguments, but half of them are optional. The arguments are:
+
+* **`function_name`** (**`text`**)—name of function to be created.
+* **`parameter_names`** (**`text[]`**)—names of arguments to the getter.
+* **`parameter_types`** (**`text[]`**)—types of arguments to the getter.
+* **`return_type`** (**`text,`**)—applied to cached value or value returned by caster.
+* **`bucket`** (**`text default null`**)—name of bucket; defaults to `function_name`.
+* **`get_key`** (**`text default null`**)—optional, default is JSON list / object of values.
+* **`get_update`** (**`text default null`**)—optional, this x-or `perform_update` must be given.
+* **`perform_update`** (**`text default null`**)—optional, this x-or `get_update` must be given.
+* **`caster`** (**`text default null`**)—optional, to transform JSONB value in to `return_type` (after `caster()` called where present).
 
 
 # To Do

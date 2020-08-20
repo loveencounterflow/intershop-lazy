@@ -172,7 +172,7 @@ create function LAZY._create_lazy_producer(
     -- .....................................................................................................
     ¶r := '';
     ¶r := ¶r ||         e'/*^9^*/   -- ---------------------------------------------------'   || e'\n';
-    ¶r := ¶r ||         e'/*^10^*/   ¶rows := ( select array_agg( value ) from LAZY.facets'    || e'\n';
+    ¶r := ¶r ||         e'/*^10^*/   ¶rows := ( select array_agg( value ) from LAZY.facets'   || e'\n';
     ¶r := ¶r || format( e'/*^11^*/    where bucket = %L and key = ¶key );'                    || e'\n', ¶bucket );
     ¶r := ¶r ||         e'/*^12^*/  if array_length( ¶rows, 1 ) = 1 then'                     || e'\n';
     ¶r := ¶r || format( e'/*^13^*/    return %s; end if;'                                     || e'\n', ¶v );
@@ -180,7 +180,7 @@ create function LAZY._create_lazy_producer(
     -- .....................................................................................................
     R  := R  ||         e'/*^18^*/  -- -----------------------------------------------------' || e'\n';
     if ( get_update is not null ) then
-      R  := R  || format( e'/*^19^*/  ¶value := /*-(gu-*/ %s; /*-gu)*/'                         || e'\n', get_update );
+      R  := R  || format( e'/*^19^*/  ¶value := %s( %s );'                                      || e'\n', get_update, ¶n );
       R  := R  ||         e'/*^20^*/  insert into LAZY.facets ( bucket, key, value ) values'    || e'\n';
       R  := R  || format( e'/*^21^*/    ( %L, ¶key, ¶value );'                                  || e'\n', ¶bucket );
       R  := R  || format( e'/*^22^*/    return %s;'                                             || e'\n', ¶v );

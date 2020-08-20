@@ -39,8 +39,17 @@ producers can communicate the 'happy' or 'sad' outcomes of computations. Since t
 proper (named `ok` similar to Rust's `Result` type) has type `jsonb`, the set of all happy results is the
 set of values that can be represented by PostGreSQL's `jsonb` data type.
 
-Value producers must not raise exceptions during normal operation; when they do, no attempt is made
-by InterShop Lazy to handle them. However, value producers *can* return 'sad' results.
+Value Producers should be immutable functions that never throw under normal conditions; instead, use
+`LAZY.sad( 'message' )` to communicate that a given combination of arguments should cause an exception. This
+exception will be stored just like a regular result would and will lead to same exception whenever the same
+combination of values is requested later.
+
+One further restriction is that whatever Value Producers return must be expressible with PostGreSQL's
+`jsonb` data type; more specifically, all return values `R` must be OK to be used in the expression
+`to_jsonb( R )`. In case this requirement cannot be met, there's the possibility to pass the name of a
+casting function (argument `caster`) that can be used to turn e.g. a serialization or an object structure
+back into a value of the desired type.
+
 
 * `called on null input`
 
@@ -103,9 +112,9 @@ Points to keep in mind:
   internally; its effect is that the potentially distinct results that all indicate a `null` result are
   uniformly represented as a `(null,null)` pair.
 
-* **`create function LAZY._normalize( LAZY.facets ) returns LAZY.facets`**—Ensures that a given value to be
-  inserted to `LAZY.facets` is not SQL `null` (this is expressed by `(null,null)` instead) and that the `ok`
-  field of the result is SQL `null` and not any other value in case the `error` field isn't `null`.
+* **`LAZY._normalize( LAZY.facets ) returns LAZY.facets`**—Ensures that a given value to be inserted to
+  `LAZY.facets` is not SQL `null` (this is expressed by `(null,null)` instead) and that the `ok` field of
+  the result is SQL `null` and not any other value in case the `error` field isn't `null`.
 
 # Complete Demo
 
@@ -117,17 +126,6 @@ The first thing to do when one wants to use lazy evaluation with InterShop Lazy 
 that accepts arguments as required and that returns a `LAZY.jsonb_result` value. The convenience functions
 `LAZY.happy()` and `LAZY.sad()` make it easy to produce such results; in addition, SQL `null` may be
 returned as-is to signal cases where consumers should receive a `null` for a given computation.
-
-Value Producers should be immutable functions that never throw under normal conditions; instead, use
-`LAZY.sad( 'message' )` to communicate that a given combination of arguments should cause an exception. This
-exception will be stored just like a regular result would and will lead to same exception whenever the same
-combination of values is requested later.
-
-One further restriction is that whatever Value Producers return must be expressible with PostGreSQL's
-`jsonb` data type; more specifically, all return values `R` must be OK to be used in the expression
-`to_jsonb( R )`. In case this requirement cannot be met, there's the possibility to define a casting
-function that can be used to turn e.g. a serialization or an object structure back into a value of the
-desired type.
 
 Of course, using lazy evaluation makes only sense when one is dealing with costly computations, but for the
 sake of example, let's just produce arithmetic products here (but with a quirk to show off features). A

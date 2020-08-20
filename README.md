@@ -8,8 +8,9 @@
   - [Value Producers](#value-producers)
   - [Result Type](#result-type)
 - [API](#api)
-  - [Methods Concerning Return Values](#methods-concerning-return-values)
   - [Methods to Create Lazy Value Producers](#methods-to-create-lazy-value-producers)
+  - [Methods to Produce Result Values](#methods-to-produce-result-values)
+  - [Methods to Test Result Values](#methods-to-test-result-values)
   - [Private Methods](#private-methods)
 - [Complete Demo](#complete-demo)
   - [Step 1: Write a Value Producer](#step-1-write-a-value-producer)
@@ -57,16 +58,6 @@ its field `error` holds an error message. In either case, the returned value wil
 
 # API
 
-## Methods Concerning Return Values
-
-* **`LAZY.is_happy( LAZY.jsonb_result ) returns boolean`**— returns whether a given result is happy.
-* **`LAZY.is_sad( LAZY.jsonb_result ) returns boolean`**—returns whether a given result is sad.
-* **`LAZY.happy( ok jsonb ) returns LAZY.jsonb_result`**—given a `jsonb` value, returns the same wrapped
-  into a `LAZY.jsonb_result` composite type. This is the method that most value producers will use most of
-  the time to return happy results.
-* **`LAZY.sad( error text ) returns LAZY.jsonb_result`**—given an error message, return a
-  `LAZY.jsonb_result` where `ok` is set to `null` and `error` is set to the message given.
-
 ## Methods to Create Lazy Value Producers
 
 `LAZY.create_lazy_producer()` (`returns void`) will create a function that uses table `LAZY.facets` to produce values in a
@@ -90,6 +81,19 @@ Points to keep in mind:
 * Usage of `create_lazy_producer()` is inherently unsafe; therefore, no untrusted data (such as coming from
   a web form as data source) should be used to call this function (although the function that
   `create_lazy_producer()` creates is itself deemed safe).
+
+## Methods to Produce Result Values
+
+* **`LAZY.happy( ok jsonb ) returns LAZY.jsonb_result`**—given a `jsonb` value, returns the same wrapped
+  into a `LAZY.jsonb_result` composite type. This is the method that most value producers will use most of
+  the time to return happy results.
+* **`LAZY.sad( error text ) returns LAZY.jsonb_result`**—given an error message, return a
+  `LAZY.jsonb_result` where `ok` is set to `null` and `error` is set to the message given.
+
+## Methods to Test Result Values
+
+* **`LAZY.is_happy( LAZY.jsonb_result ) returns boolean`**— returns whether a given result is happy.
+* **`LAZY.is_sad( LAZY.jsonb_result ) returns boolean`**—returns whether a given result is sad.
 
 ## Private Methods
 

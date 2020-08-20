@@ -136,15 +136,22 @@ create function LAZY._create_lazy_producer(
       from unnest( parameter_names ) with ordinality as r1 ( name, nr ) );
     ¶n := ( select string_agg( n, ', ' ) from unnest( parameter_names ) as x ( n ) );
     ¶x := ( select string_agg( n || ': %s', ', ' ) from unnest( parameter_names ) as x ( n ) );
+    ¶p := '/*-(¶p-*/ ' || ¶p || ' /*-¶p)-*/';
+    ¶n := '/*-(¶n-*/ ' || ¶n || ' /*-¶n)-*/';
+    ¶x := '/*-(¶x-*/ ' || ¶x || ' /*-¶x)-*/';
     -- .....................................................................................................
     if get_key is null then
-      ¶k := format( 'jsonb_build_array( %s )', ¶n );
+      ¶k := format( '/*-(¶k1-*/ jsonb_build_array( %s ) /*-¶k1)-*/', ¶n );
     else
-      ¶k := format( '%s( %s )', get_key, ¶n );
+      ¶k := format( '/*-(¶k2-*/ %s( %s ) /*-¶k2)-*/', get_key, ¶n );
       end if;
     -- .....................................................................................................
     ¶bucket :=  coalesce( bucket, function_name );
-    ¶v      :=  format( '%s( ¶value )::%s', coalesce( caster, '' ), return_type );
+    if ( get_update is not null ) then
+      ¶v      :=  format( e'/*^(¶v-*/ %s( LAZY.unwrap( ¶value ) )::%s /*-¶v)-*/', coalesce( caster, '' ), return_type );
+    else
+      ¶v      :=  format( e'/*^(¶v-*/ %s( LAZY.unwrap( ¶rows[ 1 ] ) )::%s /*-¶v)-*/', coalesce( caster, '' ), return_type );
+      end if;
     -- .....................................................................................................
     if ( get_update is null ) and ( perform_update is null ) then
       raise sqlstate 'LZ120' using message =
@@ -154,44 +161,47 @@ create function LAZY._create_lazy_producer(
       '#LZ120 Type Error: one of get_update, perform_update must be null'; end if;
     -- .....................................................................................................
     R  := '';
-    R  := R  || format( e'create function %s( %s )                                  \n', function_name, ¶p );
-    R  := R  || format( e'  returns %s strict volatile language plpgsql as $f$      \n', return_type );
-    R  := R  ||         e'  declare                                                 \n';
-    R  := R  || format( e'    ¶key    jsonb := %s;                                  \n', ¶k );
-    R  := R  ||         e'    ¶value  jsonb;                                        \n';
-    R  := R  ||         e'  begin                                                   \n';
+    R  := R  || format( e'/*^1^*/ create function %s( %s )'                                   || e'\n', function_name, ¶p );
+    R  := R  || format( e'/*^2^*/   returns %s'                                               || e'\n', return_type );
+    R  := R  ||         e'/*^3^*/   called on null input volatile language plpgsql as $f$'    || e'\n';
+    R  := R  ||         e'/*^4^*/   declare'                                                  || e'\n';
+    R  := R  || format( e'/*^5^*/     ¶key    jsonb := %s;'                                   || e'\n', ¶k );
+    R  := R  ||         e'/*^6^*/     ¶rows   LAZY.jsonb_result[];'                           || e'\n';
+    R  := R  ||         e'/*^7^*/     ¶value  LAZY.jsonb_result;'                             || e'\n';
+    R  := R  ||         e'/*^8^*/   begin'                                                    || e'\n';
     -- .....................................................................................................
     ¶r := '';
-    ¶r := ¶r ||         e'  -- ---------------------------------------------------\n';
-    ¶r := ¶r ||         e'  ¶value := ( select value from LAZY.facets             \n';
-    ¶r := ¶r || format( e'    where bucket = %L and key = ¶key );                 \n', ¶bucket );
-    ¶r := ¶r || format( e'  if ¶value is not null then return %s; end if;         \n', ¶v );
+    ¶r := ¶r ||         e'/*^9^*/   -- ---------------------------------------------------'   || e'\n';
+    ¶r := ¶r ||         e'/*^10^*/   ¶rows := ( select array_agg( value ) from LAZY.facets'    || e'\n';
+    ¶r := ¶r || format( e'/*^11^*/    where bucket = %L and key = ¶key );'                    || e'\n', ¶bucket );
+    ¶r := ¶r ||         e'/*^12^*/  if array_length( ¶rows, 1 ) = 1 then'                     || e'\n';
+    ¶r := ¶r || format( e'/*^13^*/    return %s; end if;'                                     || e'\n', ¶v );
     R  := R  || ¶r;
     -- .....................................................................................................
-    R  := R  ||         e'  -- -----------------------------------------------------\n';
+    R  := R  ||         e'/*^18^*/  -- -----------------------------------------------------' || e'\n';
     if ( get_update is not null ) then
-      R  := R  || format( e'  ¶value := %s;\n', get_update );
-      R  := R  ||         e'  insert into LAZY.facets ( bucket, key, value ) values \n';
-      R  := R  || format( e'    ( %L, ¶key, to_jsonb( ¶value ) );                   \n', ¶bucket );
-      R  := R  || format( e'  if ¶value is not null then return ¶value::%s; end if; \n', return_type );
+      R  := R  || format( e'/*^19^*/  ¶value := /*-(gu-*/ %s; /*-gu)*/'                         || e'\n', get_update );
+      R  := R  ||         e'/*^20^*/  insert into LAZY.facets ( bucket, key, value ) values'    || e'\n';
+      R  := R  || format( e'/*^21^*/    ( %L, ¶key, ¶value );'                                  || e'\n', ¶bucket );
+      R  := R  || format( e'/*^22^*/    return %s;'                                             || e'\n', ¶v );
     else
-      R  := R  || format( e'  perform %s( %s );                                     \n', perform_update, ¶n );
+      R  := R  || format( e'/*^23^*/  perform %s( %s );'                                        || e'\n', perform_update, ¶n );
       R  := R  || ¶r;
+      R  := R  ||         e'/*^14^*/  ¶value := null::LAZY.jsonb_result;'                       || e'\n';
+      R  := R  ||         e'/*^15^*/  insert into LAZY.facets ( bucket, key, value ) values'    || e'\n';
+      R  := R  || format( e'/*^16^*/    ( %L, ¶key, ¶value );'                                  || e'\n', ¶bucket );
+      R  := R  || format( e'/*^17^*/    return %s;'                                             || e'\n', ¶v );
       end if;
-    -- .....................................................................................................
-    R  := R  ||         e'  -- -----------------------------------------------------\n';
-    R  := R  ||         e'  raise sqlstate ''LZ120'' using                          \n';
-    R  := R  ||         e'    message = format( ''#LZ120 Key Error: '' ||           \n';
-    R  := R  || format( e'    ''unable to retrieve result for %s'', %s );           \n', ¶x, ¶n );
-    R  := R  ||         e'  end; $f$;';
+    -- -- .....................................................................................................
+    R  := R  ||         e'/*^28^*/  end; $f$;';
     -- .....................................................................................................
     return R;
   end; $outer$;
 
 -- ---------------------------------------------------------------------------------------------------------
-\echo :signal ———{ :filename 9 }———:reset
+\echo :signal ———{ :filename 5 }———:reset
 -- ### TAINT could/should be procedure? ###
-create function LAZY.create_lazy_function(
+create function LAZY.create_lazy_producer(
   function_name     text,
   parameter_names   text[],
   parameter_types   text[],
@@ -203,7 +213,7 @@ create function LAZY.create_lazy_function(
   caster            text default null )
   returns void volatile called on null input language plpgsql as $$
     begin
-    execute LAZY._create_lazy_function(
+    execute LAZY._create_lazy_producer(
       function_name   => function_name,
       parameter_names => parameter_names,
       parameter_types => parameter_types,
@@ -216,19 +226,19 @@ create function LAZY.create_lazy_function(
       end; $$;
 
 /* ###################################################################################################### */
-\echo :red ———{ :filename 22 }———:reset
+\echo :red ———{ :filename 6 }———:reset
 \quit
 
 
 -- ---------------------------------------------------------------------------------------------------------
-\echo :signal ———{ :filename 10 }———:reset
+\echo :signal ———{ :filename 7 }———:reset
 
 -- select * from MYSCHEMA.products order by n, factor;
 -- select * from MYSCHEMA.get_product( 13, 12 );
 -- select * from MYSCHEMA.products order by n, factor;
 -- -- select * from MYSCHEMA.get_product( 13, 13 );
 
--- select * from LAZY.create_lazy_function(
+-- select * from LAZY.create_lazy_producer(
 --   'cache', 'get_product_generated',
 --   array[ array[ '¶n', 'integer' ], array[ '¶factor', 'integer' ] ],
 --   'r.result',

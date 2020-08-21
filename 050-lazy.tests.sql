@@ -252,12 +252,12 @@ create table LAZY_X.probes_and_matchers_2 (
 insert into LAZY_X.probes_and_matchers_2 ( title, probe_1, probe_2, matcher_ok, matcher_error ) values
   ( 'get_product_1', '0',   '1',      '0',   null           ),
   ( 'get_product_1', '1',   '1',      '1',   null           ),
-  ( 'get_product_1', '13',  '12',     null,  'LZE00'        ),
+  ( 'get_product_1', '13',  '12',     null,  'LZE00 will not produce even multiples of 13'        ),
   ( 'get_product_1', '12',  '12',     '144', null           ),
   ( 'get_product_1', '3',   '9',      '27',  null           ),
   ( 'get_product_2', '0',   '1',      '0',   null           ),
   ( 'get_product_2', '1',   '1',      '1',   null           ),
-  ( 'get_product_2', '13',  '12',     null,  'LZE00'        ),
+  ( 'get_product_2', '13',  '12',     null,  'LZE00 will not produce even multiples of 13'        ),
   ( 'get_product_2', '3',   '9',      '27',  null           ),
   ( 'get_product_2', '12',  '12',     '144', null           );
 
@@ -277,7 +277,7 @@ declare
         raise notice '(sqlstate) sqlerrm: (%) %', sqlstate, sqlerrm;
         -- raise notice 'error:  %', row( sqlstate, sqlerrm )::LAZY.error;
         -- raise notice 'result: %', row( null, sqlstate, sqlerrm )::LAZY.jsonb_result;
-        update LAZY_X.probes_and_matchers_2 set result_error = sqlstate where id = ¶row.id;
+        update LAZY_X.probes_and_matchers_2 set result_error = sqlerrm where id = ¶row.id;
       end; end loop;
     end; $$;
 
@@ -295,9 +295,32 @@ declare
       exception when others then
         if sqlstate !~ '^LZ' then raise; end if;
         raise notice '(sqlstate) sqlerrm: (%) %', sqlstate, sqlerrm;
-        update LAZY_X.probes_and_matchers_2 set result_error = sqlstate where id = ¶row.id;
+        update LAZY_X.probes_and_matchers_2 set result_error = sqlerrm where id = ¶row.id;
       end; end loop;
     end; $$;
+
+-- ---------------------------------------------------------------------------------------------------------
+create view LAZY_X.result_comparison as (
+  with v1 as ( select
+      *,
+      to_jsonb( array[ probe_1::integer, probe_2::integer ] ) as key
+    from LAZY_X.probes_and_matchers_2 )
+  select
+      v1.id,
+      v1.probe_1,
+      v1.probe_2,
+      r3.result,
+      r2.key,
+      r2.value,
+      r4.is_ok
+    from v1
+    left join LAZY.cache as r2 on r2.key = v1.key,
+    lateral ( select ( matcher_ok::jsonb, matcher_error )::LAZY.jsonb_result ) as r3 ( result ),
+    lateral ( select coalesce( r3.result = r2.value, false ) ) as r4 ( is_ok )
+    where v1.title = 'get_product_2'
+    order by r2.key );
+
+select * from LAZY_X.result_comparison;
 
 -- ---------------------------------------------------------------------------------------------------------
 insert into INVARIANTS.tests select
@@ -309,12 +332,22 @@ insert into INVARIANTS.tests select
       else ( result_error       = matcher_error       ) end             as is_ok
   from LAZY_X.probes_and_matchers_2 as r1;
 
-select * from LAZY_X.probes_and_matchers_2 order by id;
+-- ---------------------------------------------------------------------------------------------------------
+/* making sure that all tests get an entry in LAZY.cache: */
+insert into INVARIANTS.tests select
+    'LAZY'                                                              as module,
+    'cache for ' || probe_1 || ', ' || probe_2                          as title,
+    row( result )::text                                                 as values,
+    is_ok                                                               as is_ok
+  from LAZY_X.result_comparison as r1;
 
--- update LAZY.facets set value = LAZY.happy( 99 ) where bucket = 'MYSCHEMA.products' and key = '"3 times 9"'::jsonb;
-insert into LAZY.facets ( bucket, key, value ) values ( 'xxx', '"foo1"', null::LAZY.jsonb_result );
-insert into LAZY.facets ( bucket, key, value ) values ( 'xxx', '"foo2"', ( 'null'::jsonb, null )::LAZY.jsonb_result );
-select * from LAZY.facets order by key;
+
+-- ---------------------------------------------------------------------------------------------------------
+select * from LAZY_X.probes_and_matchers_2 order by id;
+-- update LAZY.cache set value = LAZY.happy( 99 ) where bucket = 'MYSCHEMA.products' and key = '"3 times 9"'::jsonb;
+-- insert into LAZY.cache ( bucket, key, value ) values ( 'xxx', '"foo1"', null::LAZY.jsonb_result );
+-- insert into LAZY.cache ( bucket, key, value ) values ( 'xxx', '"foo2"', ( 'null'::jsonb, null )::LAZY.jsonb_result );
+select * from LAZY.cache order by key;
 
 
 -- select * from INVARIANTS.tests;

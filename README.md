@@ -62,15 +62,15 @@ combination of values is requested later.
 
 A result is said the be 'happy' when its field `error` is `null`; conversely, it is said to be 'sad' when
 its field `error` holds an error message. In either case, the returned value will be stored in the
-`LAZY.facets` table.
+`LAZY.cache` table.
 
 
 # API
 
 ## Methods to Create Lazy Value Producers
 
-`LAZY.create_lazy_producer()` (`returns void`) will create a function that uses table `LAZY.facets` to produce values in a
-lazy fashion. Its arguments are:
+`LAZY.create_lazy_producer()` (`returns void`) will create a function that uses table `LAZY.cache` to
+produce values in a lazy fashion. Its arguments are:
 
 * **`function_name`** (**`text`**)—name of function to be created.
 * **`parameter_names`** (**`text[]`**)—names of arguments to the getter.
@@ -80,7 +80,8 @@ lazy fashion. Its arguments are:
 * **`get_key`** (**`text default null`**)—optional, default is JSON list / object of values.
 * **`get_update`** (**`text default null`**)—optional, this x-or `perform_update` must be given.
 * **`perform_update`** (**`text default null`**)—optional, this x-or `get_update` must be given.
-* **`caster`** (**`text default null`**)—optional, to transform JSONB value in to `return_type` (after `caster()` called where present).
+* **`caster`** (**`text default null`**)—optional, to transform JSONB value in to `return_type` (after
+  `caster()` called where present).
 
 Points to keep in mind:
 
@@ -112,8 +113,8 @@ Points to keep in mind:
   internally; its effect is that the potentially distinct results that all indicate a `null` result are
   uniformly represented as a `(null,null)` pair.
 
-* **`LAZY._normalize( LAZY.facets ) returns LAZY.facets`**—Ensures that a given value to be inserted to
-  `LAZY.facets` is not SQL `null` (this is expressed by `(null,null)` instead) and that the `ok` field of
+* **`LAZY._normalize( LAZY.cache ) returns LAZY.cache`**—Ensures that a given value to be inserted to
+  `LAZY.cache` is not SQL `null` (this is expressed by `(null,null)` instead) and that the `ok` field of
   the result is SQL `null` and not any other value in case the `error` field isn't `null`.
 
 # Complete Demo
@@ -159,7 +160,7 @@ create function MYSCHEMA.compute_product( ¶n integer, ¶factor integer )
 
 All access to the value producer should go through the function that is created by
 `LAZY.create_lazy_producer()`; this is the only one that data consumers will have to use (although they can
-of course inspect `LAZY.facets()` where computed values are kept). `create_lazy_producer()` takes quite
+of course inspect `LAZY.cache()` where computed values are kept). `create_lazy_producer()` takes quite
 a few arguments, but half of them are optional. The arguments are:
 
 ```sql
@@ -172,14 +173,14 @@ select LAZY.create_lazy_producer(
 ```
 
 The first argument here is the name of the function that computes values that have not been inserted into
-the caching table `LAZY.facets` already; the next 3 arguments basically repeat the declarative part to that
+the caching table `LAZY.cache` already; the next 3 arguments basically repeat the declarative part to that
 function and will possibly be auto-generated in a future version of InterShop Lazy.
 
 There's just one more required argument, either `get_update` or `perform_update`; exactly one of these two
 must be set to the name of a function that either
 
 * in the case of `get_update()`, will return exactly one result for each set of inputs, or
-* in the case of `perform_update()`, may insert as many rows into `LAZY.facets` as seen fit when called. In
+* in the case of `perform_update()`, may insert as many rows into `LAZY.cache` as seen fit when called. In
   case `perform_update()` happened to not produce a result line that matches the input arguments, a line
   with result `null` will be auto-generated.
 
@@ -188,13 +189,13 @@ must be set to the name of a function that either
 We're now ready to put our caching, lazy multiplicator device to use:
 
 ```sql
-select * from LAZY.facets order by bucket, key;
+select * from LAZY.cache order by bucket, key;
 select * from MYSCHEMA.get_product( 4, 12 );
 select * from MYSCHEMA.get_product( 5, 12 );
 select * from MYSCHEMA.get_product( 6, 12 );
 select * from MYSCHEMA.get_product( 60, 3 );
 select * from MYSCHEMA.get_product( 13, 13 );
-select * from LAZY.facets order by bucket, key;
+select * from LAZY.cache order by bucket, key;
 ```
 
 This will produce the following output:
@@ -248,7 +249,7 @@ This will produce the following output:
 
 As can be seen, not only does the multiplicator excel in integer arithmetics, it also keeps track of past
 results. If we were to repeat any of the above calls, no additional calls to `get_product()` would be
-performed, nor would any lines be added to `LAZY.facets`. That can save tons of cycles and waiting time!
+performed, nor would any lines be added to `LAZY.cache`. That can save tons of cycles and waiting time!
 
 Keep in mind that *almost* the same effect can be achieved in PostGreSQL by declaring a function `immutable`
 since PG caches results to immutable functions internally. However, while those caches will not survive DB

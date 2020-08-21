@@ -27,7 +27,7 @@ create type LAZY.jsonb_result as (
 
 -- ---------------------------------------------------------------------------------------------------------
 \echo :signal ———{ :filename 3 }———:reset
-create table LAZY.facets (
+create table LAZY.cache (
   bucket        text              not null,
   key           jsonb             not null,
   value         LAZY.jsonb_result not null,
@@ -73,11 +73,11 @@ create function LAZY._normalize( LAZY.jsonb_result ) returns LAZY.jsonb_result i
       else $1 end; $$;
 
 -- ---------------------------------------------------------------------------------------------------------
-create function LAZY._normalize( LAZY.facets ) returns LAZY.facets immutable language sql as
+create function LAZY._normalize( LAZY.cache ) returns LAZY.cache immutable language sql as
   $$ select
     case when ( $1.value.error is distinct from null )
-      then ( $1.bucket, $1.key, ( null::jsonb, $1.value.error ) )::LAZY.facets
-      else ( $1.bucket, $1.key, LAZY._normalize( $1.value ) )::LAZY.facets end; $$;
+      then ( $1.bucket, $1.key, ( null::jsonb, $1.value.error ) )::LAZY.cache
+      else ( $1.bucket, $1.key, LAZY._normalize( $1.value ) )::LAZY.cache end; $$;
 
 comment on function LAZY._normalize( LAZY.jsonb_result ) is 'Given a `LAZY.jsonb_result` value or `null`,
 return a LAZY.jsonb_result value with all three fields set to null if either the value is `null`, or its
@@ -88,17 +88,17 @@ return a LAZY.jsonb_result value with all three fields set to null if either the
 --
 -- ---------------------------------------------------------------------------------------------------------
 \echo :signal ———{ :filename 3 }———:reset
-create function LAZY.on_before_update_facets() returns trigger language plpgsql as $$ begin
-  raise sqlstate 'LZ104' using message = format( 'illegal to update LAZY.facets' ); end; $$;
-create trigger on_before_update_facets before update on LAZY.facets
-  for each row execute procedure LAZY.on_before_update_facets();
+create function LAZY.on_before_update_cache() returns trigger language plpgsql as $$ begin
+  raise sqlstate 'LZ104' using message = format( 'illegal to update LAZY.cache' ); end; $$;
+create trigger on_before_update_cache before update on LAZY.cache
+  for each row execute procedure LAZY.on_before_update_cache();
 
 -- ---------------------------------------------------------------------------------------------------------
 \echo :signal ———{ :filename 3 }———:reset
-create function LAZY.on_before_insert_facets() returns trigger language plpgsql as $$ begin
+create function LAZY.on_before_insert_cache() returns trigger language plpgsql as $$ begin
   return LAZY._normalize( new ); end; $$;
-create trigger on_before_insert_facets before insert on LAZY.facets
-  for each row execute procedure LAZY.on_before_insert_facets();
+create trigger on_before_insert_cache before insert on LAZY.cache
+  for each row execute procedure LAZY.on_before_insert_cache();
 
 
 -- =========================================================================================================
@@ -169,7 +169,7 @@ create function LAZY._create_lazy_producer(
     -- .....................................................................................................
     ¶r := '';
     ¶r := ¶r ||         e'/*^9^*/   -- ---------------------------------------------------'   || e'\n';
-    ¶r := ¶r ||         e'/*^10^*/   ¶rows := ( select array_agg( value ) from LAZY.facets'   || e'\n';
+    ¶r := ¶r ||         e'/*^10^*/   ¶rows := ( select array_agg( value ) from LAZY.cache'   || e'\n';
     ¶r := ¶r || format( e'/*^11^*/    where bucket = %L and key = ¶key );'                    || e'\n', ¶bucket );
     ¶r := ¶r ||         e'/*^12^*/  if array_length( ¶rows, 1 ) = 1 then'                     || e'\n';
     ¶r := ¶r || format( e'/*^13^*/    return %s; end if;'                                     || e'\n', ¶v );
@@ -178,14 +178,14 @@ create function LAZY._create_lazy_producer(
     R  := R  ||         e'/*^18^*/  -- -----------------------------------------------------' || e'\n';
     if ( get_update is not null ) then
       R  := R  || format( e'/*^19^*/  ¶value := %s( %s );'                                      || e'\n', get_update, ¶n );
-      R  := R  ||         e'/*^20^*/  insert into LAZY.facets ( bucket, key, value ) values'    || e'\n';
+      R  := R  ||         e'/*^20^*/  insert into LAZY.cache ( bucket, key, value ) values'    || e'\n';
       R  := R  || format( e'/*^21^*/    ( %L, ¶key, ¶value );'                                  || e'\n', ¶bucket );
       R  := R  || format( e'/*^22^*/    return %s;'                                             || e'\n', ¶v );
     else
       R  := R  || format( e'/*^23^*/  perform %s( %s );'                                        || e'\n', perform_update, ¶n );
       R  := R  || ¶r;
       R  := R  ||         e'/*^14^*/  ¶value := null::LAZY.jsonb_result;'                       || e'\n';
-      R  := R  ||         e'/*^15^*/  insert into LAZY.facets ( bucket, key, value ) values'    || e'\n';
+      R  := R  ||         e'/*^15^*/  insert into LAZY.cache ( bucket, key, value ) values'    || e'\n';
       R  := R  || format( e'/*^16^*/    ( %L, ¶key, ¶value );'                                  || e'\n', ¶bucket );
       R  := R  || format( e'/*^17^*/    return %s;'                                             || e'\n', ¶v );
       end if;

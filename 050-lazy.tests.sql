@@ -92,7 +92,7 @@ create view MYSCHEMA.products as ( select
       ( regexp_replace( key#>>'{}',    ' times .*$', '' ) )::integer as n,
       ( regexp_replace( key#>>'{}', '^.* times ',    '' ) )::integer as factor,
       ( LAZY.unwrap( value )  )::integer as product
-    from LAZY.facets
+    from LAZY.cache
     where bucket = 'MYSCHEMA.products' );
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -110,9 +110,9 @@ create function MYSCHEMA._update_products_cache( ¶n integer, ¶factor integer )
     ¶bucket text  :=  'MYSCHEMA.products';
     ¶key    jsonb :=  MYSCHEMA._get_product_key( ¶n, ¶factor );
   begin
-    insert into LAZY.facets ( bucket, key, value ) values
+    insert into LAZY.cache ( bucket, key, value ) values
       ( ¶bucket, ¶key, MYSCHEMA._perform_costly_computation( ¶n, ¶factor ) );
-    -- insert into LAZY.facets ( bucket, key, value ) select
+    -- insert into LAZY.cache ( bucket, key, value ) select
     --     ¶bucket,
     --     ¶key,
     --     MYSCHEMA._perform_costly_computation( ¶n, r1.factor )
@@ -151,10 +151,10 @@ create function MYSCHEMA.get_product_0( ¶n integer, ¶factor integer )
     ¶key    jsonb :=  MYSCHEMA._get_product_key( ¶n, ¶factor );
     ¶value  jsonb;
   begin
-    ¶value := ( select value from LAZY.facets where bucket = ¶bucket and ¶key = key );
+    ¶value := ( select value from LAZY.cache where bucket = ¶bucket and ¶key = key );
     if ¶value is not null then return ¶value::integer; end if;
     perform MYSCHEMA._update_products_cache( ¶n, ¶factor );
-    ¶value := ( select value from LAZY.facets where bucket = ¶bucket and ¶key = key );
+    ¶value := ( select value from LAZY.cache where bucket = ¶bucket and ¶key = key );
     if ¶value is not null then return ¶value::integer; end if;
     raise sqlstate 'XXX02' using message = format( '#XXX02-1 Key Error: unable to retrieve result for ¶n: %s, ¶factor: %s', ¶n, ¶factor );
     end; $$;
@@ -197,7 +197,7 @@ select LAZY.create_lazy_producer(
   return_type     => 'integer',                         -- applied to cached value or value returned by caster
   bucket          => null,                              -- optional, defaults to `function_name`
   get_key         => null,                              -- optional, default is JSON list / object of values
-  get_update      => 'MYSCHEMA._perform_costly_computation( ¶n, ¶factor )',      -- optional, this x-or `perform_update` must be given
+  get_update      => 'MYSCHEMA._perform_costly_computation',      -- optional, this x-or `perform_update` must be given
   perform_update  => null,                              -- optional, this x-or `get_update` must be given
   caster          => 'MYSCHEMA.cast_product'            -- optional, to transform JSONB value in to `return_type` (after `caster()` called where present)
   );
@@ -217,12 +217,12 @@ select
   caster          => 'MYSCHEMA.cast_product'            -- optional, to transform JSONB value in to `return_type` (after `caster()` called where present)
   ), e'\n' ) with ordinality as r1 ( line, lnr );
 
--- select * from LAZY.facets order by bucket, key;
+-- select * from LAZY.cache order by bucket, key;
 -- select * from MYSCHEMA.get_product_1( 4, 12 );
 -- select * from MYSCHEMA.get_product_1( 5, 12 );
 -- select * from MYSCHEMA.get_product_1( 6, 12 );
 -- select * from MYSCHEMA.get_product_2( 60, 3 );
--- select * from LAZY.facets order by bucket, key;
+-- select * from LAZY.cache order by bucket, key;
 -- select * from MYSCHEMA.products;
 -- select * from CATALOG.catalog where schema = 'myschema';
 
@@ -357,10 +357,10 @@ select * from INVARIANTS.violations;
 do $$ begin perform INVARIANTS.validate(); end; $$;
 
 
-
 /* ###################################################################################################### */
 \echo :red ———{ :filename 22 }———:reset
 \quit
+
 
 
 

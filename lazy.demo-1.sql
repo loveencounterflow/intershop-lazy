@@ -27,28 +27,21 @@ create view MYSCHEMA.products as ( select
       ( key->0 )::integer as n,
       ( key->1 )::integer as factor,
       ( LAZY.unwrap( value )  )::integer as product
-    from LAZY.facets
+    from LAZY.cache
     where bucket = 'MYSCHEMA.get_product' );
 
 -- ---------------------------------------------------------------------------------------------------------
 \echo :signal ———{ :filename 5 }———:reset
 create function MYSCHEMA.compute_product( ¶n integer, ¶factor integer )
   returns LAZY.jsonb_result immutable called on null input language plpgsql as $$ declare
-  begin return LAZY.happy( 21 ); end; $$;
-  -- begin
-  --   if ( ¶n is not distinct from null ) or ( ¶factor is not distinct from null ) then
-  --     return LAZY.sad( 'will not produce result if any argument is null' );
-  --     end if;
-  --   if ¶n != 13 then
-  --     return LAZY.happy( ¶n * ¶factor );
-  --   else
-  --     if ( ¶factor % 2 ) = 0 then
-  --       return LAZY.sad( 'will not produce even multiples of 13' );
-  --     else
-  --       return null;
-  --       end if;
-  --     end if;
-  --   end; $$;
+  begin
+    if ( ¶n is not distinct from null ) or ( ¶factor is not distinct from null ) then
+      return LAZY.sad( 'will not produce result if any argument is null' ); end if;
+    if ¶n != 13 then
+      return LAZY.happy( ¶n * ¶factor ); end if;
+    if ( ¶factor % 2 ) = 0 then
+      return LAZY.sad( 'will not produce even multiples of 13' ); end if;
+    return null; end; $$;
 
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -79,21 +72,29 @@ select
   ), e'\n' ) with ordinality as r1 ( line, lnr );
 
 
-select * from LAZY.facets order by bucket, key;
+select * from LAZY.cache order by bucket, key;
 select * from MYSCHEMA.get_product( 4, 12 );
 select * from MYSCHEMA.get_product( 5, 12 );
 select * from MYSCHEMA.get_product( 6, 12 );
 select * from MYSCHEMA.get_product( 60, 3 );
-select * from LAZY.facets order by bucket, key;
+select * from MYSCHEMA.get_product( 13, 13 );
+select * from LAZY.cache order by bucket, key;
 select * from MYSCHEMA.products;
-select * from CATALOG.catalog where schema = 'myschema';
 
-select * from MYSCHEMA.get_product( 13, 12 );
+do $$ begin
+  perform MYSCHEMA.get_product( 13, 12 );
+  exception when others then
+    if sqlstate !~ '^LZ' then raise; end if;
+    raise notice '(sqlstate) sqlerrm: (%) %', sqlstate, sqlerrm;
+  end; $$;
 
+select * from LAZY.cache order by bucket, key;
+select * from MYSCHEMA.products;
 
 /* ###################################################################################################### */
 \echo :red ———{ :filename 22 }———:reset
 \quit
 
 
+select * from CATALOG.catalog where schema = 'myschema';
 

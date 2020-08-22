@@ -8,11 +8,17 @@
   - [Value Producers](#value-producers)
 - [API](#api)
   - [Methods to Create Lazy Value Producers](#methods-to-create-lazy-value-producers)
-  - [Private Methods](#private-methods)
+  - [Helper Methods](#helper-methods)
 - [Complete Demo](#complete-demo)
-  - [Step 1: Write a Value Producer](#step-1-write-a-value-producer)
-  - [Step 2: Create a Lazy Producer](#step-2-create-a-lazy-producer)
-  - [Use the Lazy Value Producer](#use-the-lazy-value-producer)
+  - [Demo I: Multiplying Integers](#demo-i-multiplying-integers)
+    - [Step 1: Write an Eager Value Producer](#step-1-write-an-eager-value-producer)
+    - [Step 2: Create a Lazy Producer](#step-2-create-a-lazy-producer)
+    - [Step 3: Use the Lazy Value Producer](#step-3-use-the-lazy-value-producer)
+  - [DEMO II: Summing Up, Speculatively](#demo-ii-summing-up-speculatively)
+    - [Step 1: Write a Speculative Eager Value Producer](#step-1-write-a-speculative-eager-value-producer)
+    - [Step 2: Create a Lazy Producer](#step-2-create-a-lazy-producer-1)
+    - [Step 3: Use the Lazy Value Producer](#step-3-use-the-lazy-value-producer-1)
+  - [Bonus: Setting up Custom Cache Views](#bonus-setting-up-custom-cache-views)
 - [To Do](#to-do)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -72,12 +78,12 @@ Points to keep in mind:
 
 > The below code can be seen in action by running `psql -f lazy.demo-1.sql` and `psql -f lazy.demo-2.sql`.
 
-In this demo, we want to write two lazy value producers that compute multiples of integers and sums of
-floats; for the first, we will use an eager value getter that will only procude one value per call; for
+In this demo, we want to write two lazy value producers that compute multiples of floats and sums of
+integers; for the first, we will use an eager value getter that will only procude one value per call; for
 the sums, we will have a look at an eager value inserter that guesses values that might be used in the
-future and inserts them into the cache table for later use. Additionally, we will set up custom
-cache views that make read-only access to cached values easier than looking at the cache table directly.
-So let's get started.
+future and inserts them into the cache table for later use. Additionally, we will set up custom cache views
+that make read-only access to cached values easier than looking at the cache table directly. So let's get
+started.
 
 ## Demo I: Multiplying Integers
 
@@ -95,8 +101,8 @@ good measure, we also want to report any calls to the console which is what the 
 for:
 
 ```sql
-create function MYSCHEMA.compute_product( ¶n integer, ¶factor integer )
-  returns integer immutable called on null input language plpgsql as $$ begin
+create function MYSCHEMA.compute_product( ¶n float, ¶factor float )
+  returns float immutable called on null input language plpgsql as $$ begin
     raise notice 'MYSCHEMA.compute_product( %, % )', ¶n, ¶factor;
     if ( ¶n is null ) or ( ¶factor is null ) then return 0; end if;
     if ¶n != 13 then return ¶n * ¶factor; end if;
@@ -120,8 +126,8 @@ call `LAZY.create_lazy_producer()`:
 select LAZY.create_lazy_producer(
   function_name   => 'MYSCHEMA.get_product',
   parameter_names => '{¶n,¶factor}',
-  parameter_types => '{integer,integer}',
-  return_type     => 'integer',
+  parameter_types => '{float,float}',
+  return_type     => 'float',
   get_update      => 'MYSCHEMA.compute_product' );
 ```
 
@@ -148,15 +154,20 @@ of factors and update it with the computation results:
 
 ```sql
 create table MYSCHEMA.fancy_products (
-  n         integer,
-  factor    integer,
-  result    integer );
+  n         float,
+  factor    float,
+  result    float );
 
 insert into MYSCHEMA.fancy_products ( n, factor ) values
   ( 123,  456  ),
   ( 4,    12   ),
   ( 5,    12   ),
   ( 6,    12   ),
+  ( 6,    12   ),
+  ( 6,    12   ),
+  ( 6,    12   ),
+  ( 6,    12   ),
+  ( 6.3,  12   ),
   ( 60,   3    ),
   ( 13,   13   ),
   ( 1,    null ),
@@ -171,15 +182,16 @@ select * from LAZY.cache order by bucket, key;
 This will produce the following output:
 
 ```
-psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( 123, 456 )
-psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( 4, 12 )
-psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( 5, 12 )
-psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( 6, 12 )
-psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( 60, 3 )
-psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( 13, 13 )
-psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( 1, <NULL> )
-psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( <NULL>, <NULL> )
-psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( <NULL>, 100 )
+psql:lazy.demo-1.sql:76: NOTICE:  MYSCHEMA.compute_product( 123, 456 )
+psql:lazy.demo-1.sql:76: NOTICE:  MYSCHEMA.compute_product( 4, 12 )
+psql:lazy.demo-1.sql:76: NOTICE:  MYSCHEMA.compute_product( 5, 12 )
+psql:lazy.demo-1.sql:76: NOTICE:  MYSCHEMA.compute_product( 6, 12 )
+psql:lazy.demo-1.sql:76: NOTICE:  MYSCHEMA.compute_product( 6.3, 12 )
+psql:lazy.demo-1.sql:76: NOTICE:  MYSCHEMA.compute_product( 60, 3 )
+psql:lazy.demo-1.sql:76: NOTICE:  MYSCHEMA.compute_product( 13, 13 )
+psql:lazy.demo-1.sql:76: NOTICE:  MYSCHEMA.compute_product( 1, <NULL> )
+psql:lazy.demo-1.sql:76: NOTICE:  MYSCHEMA.compute_product( <NULL>, <NULL> )
+psql:lazy.demo-1.sql:76: NOTICE:  MYSCHEMA.compute_product( <NULL>, 100 )
 ╔═════╤════════╤════════╗
 ║  n  │ factor │ result ║
 ╠═════╪════════╪════════╣
@@ -191,6 +203,7 @@ psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( <NULL>, 100 )
 ║   6 │     12 │      ∎ ║
 ║   6 │     12 │     72 ║
 ║   6 │     12 │      ∎ ║
+║ 6.3 │     12 │   75.6 ║
 ║  13 │     13 │      ∎ ║
 ║  60 │      3 │    180 ║
 ║ 123 │    456 │  56088 ║
@@ -207,6 +220,7 @@ psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( <NULL>, 100 )
 ║ MYSCHEMA.get_product │ [4, 12]      │ 48    ║
 ║ MYSCHEMA.get_product │ [5, 12]      │ 60    ║
 ║ MYSCHEMA.get_product │ [6, 12]      │ 72    ║
+║ MYSCHEMA.get_product │ [6.3, 12]    │ 75.6  ║
 ║ MYSCHEMA.get_product │ [13, 13]     │ ∎     ║
 ║ MYSCHEMA.get_product │ [60, 3]      │ 180   ║
 ║ MYSCHEMA.get_product │ [123, 456]   │ 56088 ║
@@ -216,10 +230,148 @@ psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( <NULL>, 100 )
 The above shows that although some inputs were repeated in the `fancy_products` tables, none of the
 repetitions led to additional calls to the eager producer or to entries in the cache.
 
-### Bonus: Setting up Custom Cache Views
+## DEMO II: Summing Up, Speculatively
 
+In this demo, let me demonstrate how to write a speculative value producer, that is, a producer that does
+more work when called than is strictly necessary in order to avoid getting called more often. Such a
+behavior might shave off some computation time when the act of computing a single value is associated with a
+high overhead cost that remains more or less constant no matter how many values are produced, and we have
+either a way to somehow predict what other values might get requested in the future when given a set of
+inputs, or we can somehow make sure a given subdomain of values can be exhaustively cached. For example,
+there might be a configuration file that must be laoded and parsed in order to obtain a single configuration
+setting in the file; in such a case, it might be advantageous to cache all the settings from the file
+whenever any setting is requested so that future setting requests can be answered by a table lookup.
 
+### Step 1: Write a Speculative Eager Value Producer
 
+The eager value producer of the first example was an immutable function that returns a single value. In
+order to do speculative caching, we'll need a volatile function that updates the cache directly. In its most
+basic form, such a cache updating function might look like this:
+
+```sql
+create function MYSCHEMA.insert_sums_single_row( ¶a integer, ¶b integer )
+  returns void volatile called on null input language plpgsql as $$ begin
+    raise notice 'MYSCHEMA.insert_sums( %, % )', ¶a, ¶b;
+    insert into LAZY.cache ( bucket, key, value ) values
+      ( 'yeah! sums!', to_jsonb( array[ ¶a, ¶b ] ), to_jsonb( ¶a + ¶b ) );
+      -- ^^^^ bucket   ^^^^ key                     ^^^^ value
+    end; $$;
+```
+
+This is only the basic shape however and will only insert a single row which, as such, is not very
+speculative. Here is an improved version that guesses a few sums that might pop up in the future—namely,
+given `[ a, b ]`, it will compute `a + b - 1`, `a + b`, and `a + b + 1`, minus those sums that already have
+an cache entry:
+
+```sql
+create function MYSCHEMA.insert_sums( ¶a integer, ¶b integer )
+  returns void volatile called on null input language plpgsql as $$ begin
+    raise notice 'MYSCHEMA.insert_sums( %, % )', ¶a, ¶b;
+    insert into LAZY.cache ( bucket, key, value ) select
+        'yeah! sums!'                                 as bucket,
+        r2.key                                        as key,
+        r3.value                                      as value
+      from generate_series( ¶b - 1, ¶b + 1 )        as r1 ( bb    ),
+      lateral to_jsonb( array[ ¶a, r1.bb ] )        as r2 ( key   ),
+      lateral to_jsonb( ¶a + r1.bb )                as r3 ( value )
+      where not exists ( select 1 from LAZY.cache as r4 where ( r4.key = r2.key ) );
+    end; $$;
+```
+
+### Step 2: Create a Lazy Producer
+
+Given `insert_sums()`, we can now create its lazy version, `get_sum()`:
+
+```sql
+select LAZY.create_lazy_producer(
+  function_name   => 'MYSCHEMA.get_sum',
+  parameter_names => '{¶a,¶b}',
+  parameter_types => '{integer,integer}',
+  return_type     => 'integer',
+  bucket          => 'yeah! sums!',
+  perform_update  => 'MYSCHEMA.insert_sums' );
+```
+
+### Step 3: Use the Lazy Value Producer
+
+Just as in the first demo, let's use a table to store results. This time round, we generate the data:
+
+```sql
+create table MYSCHEMA.fancy_sums (
+  a         integer,
+  b         integer,
+  result    integer );
+
+insert into MYSCHEMA.fancy_sums ( a, b ) select 7, b from generate_series( 1, 10 ) as x ( b );
+update MYSCHEMA.fancy_sums set result = MYSCHEMA.get_sum( a, b );
+select * from LAZY.cache order by bucket, key;
+```
+
+And this is the output; notice that while the cache has gained 11 entries, only 5 calls to the eager
+producer was necessary:
+
+```
+psql:lazy.demo-2.sql:72: NOTICE:  MYSCHEMA.insert_sums( 7, 1 )
+psql:lazy.demo-2.sql:72: NOTICE:  MYSCHEMA.insert_sums( 7, 3 )
+psql:lazy.demo-2.sql:72: NOTICE:  MYSCHEMA.insert_sums( 7, 5 )
+psql:lazy.demo-2.sql:72: NOTICE:  MYSCHEMA.insert_sums( 7, 7 )
+psql:lazy.demo-2.sql:72: NOTICE:  MYSCHEMA.insert_sums( 7, 9 )
+╔═════════════╤═════════╤═══════╗
+║   bucket    │   key   │ value ║
+╠═════════════╪═════════╪═══════╣
+║ yeah! sums! │ [7, 0]  │ 7     ║
+║ yeah! sums! │ [7, 1]  │ 8     ║
+║ yeah! sums! │ [7, 2]  │ 9     ║
+║ yeah! sums! │ [7, 3]  │ 10    ║
+║ yeah! sums! │ [7, 4]  │ 11    ║
+║ yeah! sums! │ [7, 5]  │ 12    ║
+║ yeah! sums! │ [7, 6]  │ 13    ║
+║ yeah! sums! │ [7, 7]  │ 14    ║
+║ yeah! sums! │ [7, 8]  │ 15    ║
+║ yeah! sums! │ [7, 9]  │ 16    ║
+║ yeah! sums! │ [7, 10] │ 17    ║
+╚═════════════╧═════════╧═══════╝
+```
+
+Note that in case an eager inserting value producer should not insert a value for a given requested key, the
+lazy value producer will then auto-generate a row with `null` value. This behavior may become configurable
+in a future version.
+
+## Bonus: Setting up Custom Cache Views
+
+Since it may sometimes be useful to have a view on the data already cached by a given lazy producer, here's
+how to do it. It is basically straightforward: the key is by default formed by building a `jsonb` array of
+the arguments (although one can define one's own keying method); likewise, values are stored as `jsonb`
+values so these have to be converted back to the intended data type. Which is not difficult to do, except
+that `jsonb` has its own `null` value which, unlike SQL `null`, cannot be cast; this is what
+`LAZY.nullify()` is for:
+
+```sql
+create view MYSCHEMA.products as ( select
+      ( LAZY.nullify( key->0 ) )::float as n,
+      ( LAZY.nullify( key->1 ) )::float as factor,
+      ( LAZY.nullify( value  ) )::float as product
+    from LAZY.cache
+    where bucket = 'MYSCHEMA.get_product'
+    order by n desc, factor desc );
+```
+
+```
+╔═════╤════════╤═════════╗
+║  n  │ factor │ product ║
+╠═════╪════════╪═════════╣
+║   ∎ │      ∎ │       0 ║
+║   ∎ │    100 │       0 ║
+║ 123 │    456 │   56088 ║
+║  60 │      3 │     180 ║
+║  13 │     13 │       ∎ ║
+║ 6.3 │     12 │    75.6 ║
+║   6 │     12 │      72 ║
+║   5 │     12 │      60 ║
+║   4 │     12 │      48 ║
+║   1 │      ∎ │       0 ║
+╚═════╧════════╧═════════╝
+```
 
 # To Do
 

@@ -58,7 +58,7 @@ create trigger on_before_insert_cache before insert on LAZY.cache
 -- ---------------------------------------------------------------------------------------------------------
 \echo :signal ———{ :filename 4 }———:reset
 -- ### TAINT could/should be procedure? ###
-create function LAZY._create_lazy_producer(
+create function LAZY.create_lazy_producer(
   function_name     text,
   parameter_names   text[],
   parameter_types   text[],
@@ -67,7 +67,7 @@ create function LAZY._create_lazy_producer(
   get_key           text default null,
   get_update        text default null,
   perform_update    text default null )
-  returns text immutable called on null input language plpgsql as $outer$
+  returns text volatile called on null input language plpgsql as $outer$
   declare
     ¶bucket text;
     ¶p      text;
@@ -148,33 +148,10 @@ create function LAZY._create_lazy_producer(
     -- -- .....................................................................................................
     R  := R  ||         e'/*^24^*/  end; $f$;';
     -- .....................................................................................................
+    execute R;
     return R;
   end; $outer$;
 
--- ---------------------------------------------------------------------------------------------------------
-\echo :signal ———{ :filename 5 }———:reset
--- ### TAINT could/should be procedure? ###
-create function LAZY.create_lazy_producer(
-  function_name     text,
-  parameter_names   text[],
-  parameter_types   text[],
-  return_type       text,
-  bucket            text default null,
-  get_key           text default null,
-  get_update        text default null,
-  perform_update    text default null )
-  returns void volatile called on null input language plpgsql as $$
-    begin
-    execute LAZY._create_lazy_producer(
-      function_name   => function_name,
-      parameter_names => parameter_names,
-      parameter_types => parameter_types,
-      return_type     => return_type,
-      bucket          => bucket,
-      get_key         => get_key,
-      get_update      => get_update,
-      perform_update  => perform_update );
-      end; $$;
 
 /* ###################################################################################################### */
 \echo :red ———{ :filename 6 }———:reset

@@ -105,7 +105,7 @@ create function MYSCHEMA._get_product_key( ¶n integer, ¶factor integer )
 \echo :signal ———{ :filename 5 }———:reset
 -- ### NOTE consider to allow variant where update method returns key, value instead of inserting itself;
 -- the latter is more general as it may insert an arbitrary number of adjacent / related / whatever items
-create function MYSCHEMA._update_products_cache( ¶n integer, ¶factor integer, ¶bucket text default 'MYSCHEMA.products' )
+create function MYSCHEMA._update_products_cache( ¶n integer, ¶factor integer, ¶bucket text default 'MYSCHEMA.productsYYY' )
   returns void volatile called on null input language plpgsql as $$ declare
     ¶key    jsonb :=  MYSCHEMA._get_product_key( ¶n, ¶factor );
   begin
@@ -195,50 +195,24 @@ create function MYSCHEMA._perform_costly_computation( ¶n integer, ¶factor inte
 -- =========================================================================================================
 --
 -- ---------------------------------------------------------------------------------------------------------
-create function MYSCHEMA.cast_product( ¶value jsonb )
-  returns integer immutable called on null input language sql as
-  $$ select ¶value::integer; $$;
-
-select LAZY.create_lazy_producer(
-  function_name   => 'MYSCHEMA.get_product_1',          -- name of function to be created
-  parameter_names => '{¶n,¶factor}',
-  parameter_types => '{integer,integer}',
-  return_type     => 'integer',                         -- applied to JSONB value
-  bucket          => 'MYSCHEMA.products',               -- optional, defaults to `function_name`
-  get_key         => 'MYSCHEMA._get_product_key',       -- optional, default is JSON list / object of values
-  get_update      => null,                              -- optional, this x-or `perform_update` must be given
-  perform_update  => 'MYSCHEMA._update_products_cache'  -- optional, this x-or `get_update` must be given
-  );
-
 select
     r1.lnr - 1 as lnr,
     r1.line
-  from regexp_split_to_table( LAZY._create_lazy_producer(
+  from regexp_split_to_table( LAZY.create_lazy_producer(
   function_name   => 'MYSCHEMA.get_product_1',          -- name of function to be created
   parameter_names => '{¶n,¶factor}',
   parameter_types => '{integer,integer}',
   return_type     => 'integer',                         -- applied to JSONB value
-  bucket          => 'MYSCHEMA.products',               -- optional, defaults to `function_name`
+  bucket          => 'MYSCHEMA.products_1',             -- optional, defaults to `function_name`
   get_key         => 'MYSCHEMA._get_product_key',       -- optional, default is JSON list / object of values
   get_update      => null,                              -- optional, this x-or `perform_update` must be given
   perform_update  => 'MYSCHEMA._update_products_cache'  -- optional, this x-or `get_update` must be given
   ), e'\n' ) with ordinality as r1 ( line, lnr );
 
-select LAZY.create_lazy_producer(
-  function_name   => 'MYSCHEMA.get_product_2',          -- name of function to be created
-  parameter_names => '{¶n,¶factor}',
-  parameter_types => '{integer,integer}',
-  return_type     => 'integer',                         -- applied to JSONB value
-  bucket          => null,                              -- optional, defaults to `function_name`
-  get_key         => null,                              -- optional, default is JSON list / object of values
-  get_update      => 'MYSCHEMA._perform_costly_computation',      -- optional, this x-or `perform_update` must be given
-  perform_update  => null                               -- optional, this x-or `get_update` must be given
-  );
-
 select
     r1.lnr - 1 as lnr,
     r1.line
-  from regexp_split_to_table( LAZY._create_lazy_producer(
+  from regexp_split_to_table( LAZY.create_lazy_producer(
   function_name   => 'MYSCHEMA.get_product_2',          -- name of function to be created
   parameter_names => '{¶n,¶factor}',
   parameter_types => '{integer,integer}',
@@ -323,45 +297,6 @@ do $outer$
     end;
 $outer$;
 
-
--- -- ---------------------------------------------------------------------------------------------------------
--- do $$
--- declare
---     ¶row    record;
---     ¶result text;
---   begin
---     for ¶row in ( select * from LAZY_X.probes_and_matchers_2 where title = 'get_product_1' ) loop
---       ¶result = MYSCHEMA.get_product_1( ¶row.probe_1::integer, ¶row.probe_2::integer )::text;
---       update LAZY_X.probes_and_matchers_2 set result = ¶result where id = ¶row.id;
---       -- ...................................................................................................
---       -- exception when sqlstate 'LZ120' then
---       exception when others then
---         if sqlstate !~ '^LZ' then raise; end if;
---         raise notice '(sqlstate) sqlerrm: (%) %', sqlstate, sqlerrm;
---         -- raise notice 'error:  %', row( sqlstate, sqlerrm )::LAZY.error;
---         -- raise notice 'result: %', row( null, sqlstate, sqlerrm )::LAZY.jsonb_result;
---         update LAZY_X.probes_and_matchers_2 set result_error = sqlerrm where id = ¶row.id;
---       end; end loop;
---     end; $$;
-
--- -- ---------------------------------------------------------------------------------------------------------
--- do $$
--- declare
---     ¶row    record;
---     ¶result text;
---   begin
---     for ¶row in ( select * from LAZY_X.probes_and_matchers_2 where title = 'get_product_2' ) loop
---       ¶result = MYSCHEMA.get_product_2( ¶row.probe_1::integer, ¶row.probe_2::integer )::text;
---       update LAZY_X.probes_and_matchers_2 set result = ¶result where id = ¶row.id;
---       -- ...................................................................................................
---       -- exception when sqlstate 'LZ120' then
---       exception when others then
---         if sqlstate !~ '^LZ' then raise; end if;
---         raise notice '(sqlstate) sqlerrm: (%) %', sqlstate, sqlerrm;
---         update LAZY_X.probes_and_matchers_2 set result_error = sqlerrm where id = ¶row.id;
---       end; end loop;
---     end; $$;
-
 -- ---------------------------------------------------------------------------------------------------------
 create view LAZY_X.result_comparison as (
   with v1 as ( select
@@ -408,7 +343,7 @@ select * from LAZY_X.probes_and_matchers_2 order by id;
 -- update LAZY.cache set value = LAZY.happy( 99 ) where bucket = 'MYSCHEMA.products' and key = '"3 times 9"'::jsonb;
 -- insert into LAZY.cache ( bucket, key, value ) values ( 'xxx', '"foo1"', null::LAZY.jsonb_result );
 -- insert into LAZY.cache ( bucket, key, value ) values ( 'xxx', '"foo2"', ( 'null'::jsonb, null )::LAZY.jsonb_result );
-select * from LAZY.cache order by key;
+select * from LAZY.cache order by bucket, key;
 
 
 -- select * from INVARIANTS.tests;

@@ -302,7 +302,8 @@ create table MYSCHEMA.fancy_sums (
   b         integer,
   result    integer );
 
-insert into MYSCHEMA.fancy_sums ( a, b ) select 7, b from generate_series( 1, 10 ) as x ( b );
+insert into MYSCHEMA.fancy_sums ( a, b )
+  select 7, b from generate_series( 1, 10 ) as x ( b );
 update MYSCHEMA.fancy_sums set result = MYSCHEMA.get_sum( a, b );
 select * from LAZY.cache order by bucket, key;
 ```

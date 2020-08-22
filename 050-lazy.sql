@@ -28,10 +28,10 @@ create table LAZY.cache (
   primary key ( bucket, key ) );
 
 -- ---------------------------------------------------------------------------------------------------------
-create function LAZY._normalize( jsonb ) returns jsonb immutable language sql as $$ select
+create function LAZY.nullify( jsonb ) returns jsonb immutable strict language sql as $$ select
   case when ( $1 = 'null'::jsonb ) then null::jsonb else $1 end; $$;
 
-comment on function LAZY._normalize( jsonb ) is 'Given a `jsonb` value or `null`,
+comment on function LAZY.nullify( jsonb ) is 'Given a `jsonb` value or `null`,
 return a jsonb value with all three fields set to null if either the value is `null`, or its
 `ok` field is `null` or JSONB `''null''`; otherwise, return the value itself.';
 
@@ -48,7 +48,7 @@ create trigger on_before_update_cache before update on LAZY.cache
 -- ---------------------------------------------------------------------------------------------------------
 \echo :signal ———{ :filename 3 }———:reset
 create function LAZY.on_before_insert_cache() returns trigger language plpgsql as $$ begin
-  return ( new.bucket, new.key, LAZY._normalize( new.value ) )::LAZY.cache; end; $$;
+  return ( new.bucket, new.key, LAZY.nullify( new.value ) )::LAZY.cache; end; $$;
 create trigger on_before_insert_cache before insert on LAZY.cache
   for each row execute procedure LAZY.on_before_insert_cache();
 

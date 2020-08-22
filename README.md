@@ -59,13 +59,13 @@ Points to keep in mind:
   a web form as data source) should be used to call this function (although the function that
   `create_lazy_producer()` creates is itself deemed safe).
 
-## Private Methods
+## Helper Methods
 
-* **`LAZY._normalize( jsonb ) returns jsonb`**—Given a `jsonb` value or
-  `null`, return a jsonb value with all three fields set to null if either the value is `null`,
-  or its `ok` field is `null` or jsonb `''null''`; otherwise, return the value itself. This function is used
-  internally; its effect is that the potentially distinct results that all indicate a `null` result are
-  uniformly represented as a `(null,null)` pair.
+* **`LAZY.nullify( jsonb ) returns jsonb`**—Given `null` or any `jsonb` value, return `null` when the input
+  is `null` or `'null'::jsonb` (i.e. the `null` value of JSONB, *which is distinct from SQL null*), or the
+  value itself otherwise. This method helps to prevent errors like `cannot cast jsonb null to type x`:
+  instead of `( key->0 )::integer`, write `( LAZY.nullify( key->0 ) )::integer` to obtain SQL `null` for
+  cases where a (subvalue of a) cache column might contain `null` values.
 
 
 # Complete Demo

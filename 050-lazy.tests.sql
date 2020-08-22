@@ -74,9 +74,9 @@ update LAZY_X.the_truth_about_null as r1 set
 
 
 select * from LAZY_X.the_truth_about_null order by probe;
-select * from LAZY._normalize( ( 'null'::jsonb, null )::LAZY.jsonb_result );
-select * from LAZY._normalize( (   null::jsonb, null )::LAZY.jsonb_result );
-select * from LAZY._normalize( null::LAZY.jsonb_result );
+select * from LAZY.nullify( ( 'null'::jsonb, null )::LAZY.jsonb_result );
+select * from LAZY.nullify( (   null::jsonb, null )::LAZY.jsonb_result );
+select * from LAZY.nullify( null::LAZY.jsonb_result );
 
 \quit
 */
@@ -105,7 +105,7 @@ create function MYSCHEMA._get_product_key( ¶n integer, ¶factor integer )
 \echo :signal ———{ :filename 5 }———:reset
 -- ### NOTE consider to allow variant where update method returns key, value instead of inserting itself;
 -- the latter is more general as it may insert an arbitrary number of adjacent / related / whatever items
-create function MYSCHEMA._update_products_cache( ¶n integer, ¶factor integer, ¶bucket text default 'MYSCHEMA.productsYYY' )
+create function MYSCHEMA._update_products_cache( ¶n integer, ¶factor integer, ¶bucket text default 'MYSCHEMA.products_1' )
   returns void volatile called on null input language plpgsql as $$ declare
     ¶key    jsonb :=  MYSCHEMA._get_product_key( ¶n, ¶factor );
   begin
@@ -225,10 +225,17 @@ select
 
 -- select * from LAZY.cache order by bucket, key;
 -- select * from MYSCHEMA.get_product_1( 4, 12 );
+-- select * from MYSCHEMA.get_product_1( 4, 12 );
 -- select * from MYSCHEMA.get_product_1( 5, 12 );
 -- select * from MYSCHEMA.get_product_1( 6, 12 );
+-- select * from MYSCHEMA.get_product_1( 60, 3 );
+-- select * from MYSCHEMA.get_product_2( 4, 12 );
+-- select * from MYSCHEMA.get_product_2( 4, 12 );
+-- select * from MYSCHEMA.get_product_2( 5, 12 );
+-- select * from MYSCHEMA.get_product_2( 6, 12 );
 -- select * from MYSCHEMA.get_product_2( 60, 3 );
 -- select * from LAZY.cache order by bucket, key;
+-- \quit
 -- select * from MYSCHEMA.products;
 -- select * from CATALOG.catalog where schema = 'myschema';
 

@@ -70,32 +70,51 @@ Points to keep in mind:
 
 # Complete Demo
 
-The below code can be seen in action by running `psql -f lazy.demo-1.sql`.
+> The below code can be seen in action by running `psql -f lazy.demo-1.sql` and `psql -f lazy.demo-2.sql`.
 
-## Step 1: Write a Value Producer
+In this demo, we want to write two lazy value producers that compute multiples of integers and sums of
+floats; for the first, we will use an eager value getter that will only procude one value per call; for
+the sums, we will have a look at an eager value inserter that guesses values that might be used in the
+future and inserts them into the cache table for later use. Additionally, we will set up custom
+cache views that make read-only access to cached values easier than looking at the cache table directly.
+So let's get started.
+
+## Demo I: Multiplying Integers
+
+### Step 1: Write an Eager Value Producer
 
 The first thing to do when one wants to use lazy evaluation with InterShop Lazy is to provide a function
-that accepts arguments as required and that returns a `jsonb` value. The convenience functions
-`LAZY.happy()` and `LAZY.sad()` make it easy to produce such results; in addition, SQL `null` may be
-returned as-is to signal cases where consumers should receive a `null` for a given computation.
+that accepts arguments as required and that returns a value that can be fed to PostGreSQL's `to_jsonb()`
+function so as to obtain a cachable value.
 
-Of course, using lazy evaluation makes only sense when one is dealing with costly computations, but for the
-sake of example, let's just produce arithmetic products here (but with a quirk to show off features). A
-value producer for multiplication could look as simple as this:
+Of course, using lazy evaluation makes only sense when one is dealing with costly computations, so typically
+an eager value producer would involve stuff like network access, sifting through huge tables or maybe
+reading in data files, that kind of IO- or CPU-heavy stuff. To keep things simple, let's just multiply
+integers and throw in the quirk that multiples of `13` will produce `null` values for no obvious reason. For
+good measure, we also want to report any calls to the console which is what the `raise notice` statement is
+for:
 
 ```sql
 create function MYSCHEMA.compute_product( ¶n integer, ¶factor integer )
-  returns integer immutable called on null input language sql as $$
-  select ¶n * ¶factor; $$;
+  returns integer immutable called on null input language plpgsql as $$ begin
+    raise notice 'MYSCHEMA.compute_product( %, % )', ¶n, ¶factor;
+    if ( ¶n is null ) or ( ¶factor is null ) then return 0; end if;
+    if ¶n != 13 then return ¶n * ¶factor; end if;
+    return null; end; $$;
 ```
 
+This function is called an eager value producer because it is expected to actually compute a result for each
+time it gets called. Observe we have defined it as `immutable called on null input`, meaning that it will be
+called even if one of its arguments is `null`; this we exploit to return `0` as the product whenever one of
+the factors is SQL `null`. Had we used `strict` instead, PostGreSQL would have eschewed calling the function
+at all and filled in a `null`, which may or may not be what you want.
 
-## Step 2: Create a Lazy Producer
 
-All access to the value producer should go through the function that is created by
-`LAZY.create_lazy_producer()`; this is the only one that data consumers will have to use (although they can
-of course inspect `LAZY.cache()` where computed values are kept). `create_lazy_producer()` takes quite
-a few arguments, but half of them are optional. The arguments are:
+### Step 2: Create a Lazy Producer
+
+Now that we have an eager value producer, let's define a lazy value producer that uses results from the
+`LAZY.cache` table where possible and manages updating it where values are missing. To do this, we have to
+call `LAZY.create_lazy_producer()`:
 
 ```sql
 select LAZY.create_lazy_producer(
@@ -106,9 +125,13 @@ select LAZY.create_lazy_producer(
   get_update      => 'MYSCHEMA.compute_product' );
 ```
 
-The first argument here is the name of the function that computes values that have not been inserted into
-the caching table `LAZY.cache` already; the next 3 arguments basically repeat the declarative part to that
-function and will possibly be auto-generated in a future version of InterShop Lazy.
+Observe that the `select` statement will both create `MYSCHEMA.get_product()` and return the source text for
+that new function, which may end up in the console or wherever your SQL output goes, so you might want to
+use `do $$ begin perform LAZY.create_lazy_producer( ... ); end; $$;` instead.
+
+The first argument here is the name of the new function to be created; the next 3 arguments basically repeat
+the declarative part to that function (a future version of InterShop Lazy might auto-generate
+`parameter_names`, `parameter_types` and `return_type`).
 
 There's just one more required argument, either `get_update` or `perform_update`; exactly one of these two
 must be set to the name of a function that either
@@ -118,96 +141,90 @@ must be set to the name of a function that either
   case `perform_update()` happened to not produce a result line that matches the input arguments, a line
   with result `null` will be auto-generated.
 
-## Use the Lazy Value Producer
+### Step 3: Use the Lazy Value Producer
 
-We're now ready to put our caching, lazy multiplicator device to use:
+We're now ready to put our caching, lazy multiplicator device to use. For this, we set up a table
+of factors and update it with the computation results:
 
 ```sql
-select * from LAZY.cache order by bucket, key;
-select * from MYSCHEMA.get_product( 4, 12 );
-select * from MYSCHEMA.get_product( 5, 12 );
-select * from MYSCHEMA.get_product( 6, 12 );
-select * from MYSCHEMA.get_product( 60, 3 );
-select * from MYSCHEMA.get_product( 13, 13 );
+create table MYSCHEMA.fancy_products (
+  n         integer,
+  factor    integer,
+  result    integer );
+
+insert into MYSCHEMA.fancy_products ( n, factor ) values
+  ( 123,  456  ),
+  ( 4,    12   ),
+  ( 5,    12   ),
+  ( 6,    12   ),
+  ( 60,   3    ),
+  ( 13,   13   ),
+  ( 1,    null ),
+  ( null, null ),
+  ( null, 100  );
+
+update MYSCHEMA.fancy_products set result = MYSCHEMA.get_product( n, factor );
+select * from MYSCHEMA.fancy_products order by n, factor;
 select * from LAZY.cache order by bucket, key;
 ```
 
 This will produce the following output:
 
 ```
-╔════════╤═════╤═══════╗
-║ bucket │ key │ value ║
-╠════════╪═════╪═══════╣
-╚════════╧═════╧═══════╝
+psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( 123, 456 )
+psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( 4, 12 )
+psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( 5, 12 )
+psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( 6, 12 )
+psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( 60, 3 )
+psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( 13, 13 )
+psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( 1, <NULL> )
+psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( <NULL>, <NULL> )
+psql:lazy.demo-1.sql:75: NOTICE:  MYSCHEMA.compute_product( <NULL>, 100 )
+╔═════╤════════╤════════╗
+║  n  │ factor │ result ║
+╠═════╪════════╪════════╣
+║   1 │      ∎ │      0 ║
+║   4 │     12 │     48 ║
+║   5 │     12 │     60 ║
+║   6 │     12 │      ∎ ║
+║   6 │     12 │      ∎ ║
+║   6 │     12 │      ∎ ║
+║   6 │     12 │     72 ║
+║   6 │     12 │      ∎ ║
+║  13 │     13 │      ∎ ║
+║  60 │      3 │    180 ║
+║ 123 │    456 │  56088 ║
+║   ∎ │    100 │      0 ║
+║   ∎ │      ∎ │      0 ║
+╚═════╧════════╧════════╝
 
-╔═════════════╗
-║ get_product ║
-╠═════════════╣
-║          48 ║
-╚═════════════╝
-
-╔═════════════╗
-║ get_product ║
-╠═════════════╣
-║          60 ║
-╚═════════════╝
-
-╔═════════════╗
-║ get_product ║
-╠═════════════╣
-║          72 ║
-╚═════════════╝
-
-╔═════════════╗
-║ get_product ║
-╠═════════════╣
-║         180 ║
-╚═════════════╝
-
-╔═════════════╗
-║ get_product ║
-╠═════════════╣
-║           ∎ ║
-╚═════════════╝
-
-╔══════════════════════╤══════════╤════════╗
-║        bucket        │   key    │ value  ║
-╠══════════════════════╪══════════╪════════╣
-║ MYSCHEMA.get_product │ [4, 12]  │ (48,)  ║
-║ MYSCHEMA.get_product │ [5, 12]  │ (60,)  ║
-║ MYSCHEMA.get_product │ [6, 12]  │ (72,)  ║
-║ MYSCHEMA.get_product │ [13, 13] │ (,)    ║
-║ MYSCHEMA.get_product │ [60, 3]  │ (180,) ║
-╚══════════════════════╧══════════╧════════╝
+╔══════════════════════╤══════════════╤═══════╗
+║        bucket        │     key      │ value ║
+╠══════════════════════╪══════════════╪═══════╣
+║ MYSCHEMA.get_product │ [null, null] │ 0     ║
+║ MYSCHEMA.get_product │ [null, 100]  │ 0     ║
+║ MYSCHEMA.get_product │ [1, null]    │ 0     ║
+║ MYSCHEMA.get_product │ [4, 12]      │ 48    ║
+║ MYSCHEMA.get_product │ [5, 12]      │ 60    ║
+║ MYSCHEMA.get_product │ [6, 12]      │ 72    ║
+║ MYSCHEMA.get_product │ [13, 13]     │ ∎     ║
+║ MYSCHEMA.get_product │ [60, 3]      │ 180   ║
+║ MYSCHEMA.get_product │ [123, 456]   │ 56088 ║
+╚══════════════════════╧══════════════╧═══════╝
 ```
 
-As can be seen, not only does the multiplicator excel in integer arithmetics, it also keeps track of past
-results. If we were to repeat any of the above calls, no additional calls to `get_product()` would be
-performed, nor would any lines be added to `LAZY.cache`. That can save tons of cycles and waiting time!
+The above shows that although some inputs were repeated in the `fancy_products` tables, none of the
+repetitions led to additional calls to the eager producer or to entries in the cache.
 
-Keep in mind that *almost* the same effect can be achieved in PostGreSQL by declaring a function `immutable`
-since PG caches results to immutable functions internally. However, while those caches will not survive DB
-sessions, data stored by InterShop Lazy will.
-
-Also observe that `get_product()` will refuse to compute multiples of `13`; this is where the `null` result
-for `get_product( 13, 13 )` came from. Had we requested the result of `13 * 12` instead, an exception would
-have been raised:
-
-```sql
-select * from MYSCHEMA.get_product( 13, 12 );
-```
+### Bonus: Setting up Custom Cache Views
 
 
-```
-psql:lazy.demo-1.sql:83: ERROR:  LZE00 will not produce even multiples of 13
-CONTEXT:  PL/pgSQL function lazy.unwrap(lazy.jsonb_result) line 8 at RAISE
-PL/pgSQL function myschema.get_product(integer,integer) line 16 at RETURN
-```
 
 
 # To Do
 
-* [ ] Documentation
-* [ ] Tets
+* [X] Documentation
+* [X] Tests
+* [ ] consider to optionally use a text-based cache
 
 

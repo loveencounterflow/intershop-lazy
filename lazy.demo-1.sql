@@ -28,13 +28,15 @@ create view MYSCHEMA.products as ( select
       ( LAZY.nullify( key->1 ) )::integer as factor,
       ( LAZY.nullify( value  ) )::integer as product
     from LAZY.cache
-    where bucket = 'MYSCHEMA.get_product' );
+    where bucket = 'MYSCHEMA.get_product'
+    order by n desc, factor desc );
 
 -- ---------------------------------------------------------------------------------------------------------
 \echo :signal ———{ :filename 5 }———:reset
 create function MYSCHEMA.compute_product( ¶n integer, ¶factor integer )
-  returns integer immutable called on null input language plpgsql as $$ declare
-  begin
+  returns integer immutable called on null input language plpgsql as $$ begin
+    raise notice 'MYSCHEMA.compute_product( %, % )', ¶n, ¶factor;
+    if ( ¶n is null ) or ( ¶factor is null ) then return 0; end if;
     if ¶n != 13 then return ¶n * ¶factor; end if;
     return null; end; $$;
 
@@ -50,14 +52,30 @@ select LAZY.create_lazy_producer(
   perform_update  => null                               -- optional, this x-or `get_update` must be given
   );
 
+create table MYSCHEMA.fancy_products (
+  n         integer,
+  factor    integer,
+  result    integer );
+
+insert into MYSCHEMA.fancy_products ( n, factor ) values
+  ( 123,  456  ),
+  ( 4,    12   ),
+  ( 5,    12   ),
+  ( 6,    12   ),
+  ( 6,    12   ),
+  ( 6,    12   ),
+  ( 6,    12   ),
+  ( 6,    12   ),
+  ( 60,   3    ),
+  ( 13,   13   ),
+  ( 1,    null ),
+  ( null, null ),
+  ( null, 100  );
+
+update MYSCHEMA.fancy_products set result = MYSCHEMA.get_product( n, factor );
+select * from MYSCHEMA.fancy_products order by n, factor;
 select * from LAZY.cache order by bucket, key;
-select * from MYSCHEMA.get_product( 4, 12 );
-select * from MYSCHEMA.get_product( 5, 12 );
-select * from MYSCHEMA.get_product( 6, 12 );
-select * from MYSCHEMA.get_product( 60, 3 );
-select * from MYSCHEMA.get_product( 13, 13 );
-select * from MYSCHEMA.get_product( 1, null );
-select * from LAZY.cache order by bucket, key;
+
 select * from MYSCHEMA.products;
 
 

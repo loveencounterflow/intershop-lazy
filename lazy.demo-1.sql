@@ -24,17 +24,17 @@ drop schema if exists MYSCHEMA cascade; create schema MYSCHEMA;
 -- ---------------------------------------------------------------------------------------------------------
 \echo :signal ———{ :filename 3 }———:reset
 create view MYSCHEMA.products as ( select
-      ( LAZY.nullify( key->0 ) )::integer as n,
-      ( LAZY.nullify( key->1 ) )::integer as factor,
-      ( LAZY.nullify( value  ) )::integer as product
+      ( LAZY.nullify( key->0 ) )::float as n,
+      ( LAZY.nullify( key->1 ) )::float as factor,
+      ( LAZY.nullify( value  ) )::float as product
     from LAZY.cache
     where bucket = 'MYSCHEMA.get_product'
     order by n desc, factor desc );
 
 -- ---------------------------------------------------------------------------------------------------------
 \echo :signal ———{ :filename 5 }———:reset
-create function MYSCHEMA.compute_product( ¶n integer, ¶factor integer )
-  returns integer immutable called on null input language plpgsql as $$ begin
+create function MYSCHEMA.compute_product( ¶n float, ¶factor float )
+  returns float immutable called on null input language plpgsql as $$ begin
     raise notice 'MYSCHEMA.compute_product( %, % )', ¶n, ¶factor;
     if ( ¶n is null ) or ( ¶factor is null ) then return 0; end if;
     if ¶n != 13 then return ¶n * ¶factor; end if;
@@ -45,17 +45,17 @@ create function MYSCHEMA.compute_product( ¶n integer, ¶factor integer )
 select LAZY.create_lazy_producer(
   function_name   => 'MYSCHEMA.get_product',            -- name of function to be created
   parameter_names => '{¶n,¶factor}',
-  parameter_types => '{integer,integer}',
-  return_type     => 'integer',                         -- applied to cached value or value returned by caster
+  parameter_types => '{float,float}',
+  return_type     => 'float',                         -- applied to cached value or value returned by caster
   get_key         => null,                              -- optional, default is JSON list / object of values
   get_update      => 'MYSCHEMA.compute_product',        -- optional, this x-or `perform_update` must be given
   perform_update  => null                               -- optional, this x-or `get_update` must be given
   );
 
 create table MYSCHEMA.fancy_products (
-  n         integer,
-  factor    integer,
-  result    integer );
+  n         float,
+  factor    float,
+  result    float );
 
 insert into MYSCHEMA.fancy_products ( n, factor ) values
   ( 123,  456  ),
@@ -66,6 +66,7 @@ insert into MYSCHEMA.fancy_products ( n, factor ) values
   ( 6,    12   ),
   ( 6,    12   ),
   ( 6,    12   ),
+  ( 6.3,  12   ),
   ( 60,   3    ),
   ( 13,   13   ),
   ( 1,    null ),

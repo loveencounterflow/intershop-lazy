@@ -120,33 +120,30 @@ create function LAZY.create_lazy_producer(
     -- .....................................................................................................
     ¶r := '';
     ¶r := ¶r ||         e'/*^9^*/   -- ---------------------------------------------------'   || e'\n';
-    ¶r := ¶r ||         e'/*^9^*/   -- Try to retrieve and return value from cache:'          || e'\n';
-    ¶r := ¶r ||         e'/*^10^*/   ¶rows := ( select array_agg( value ) from LAZY.cache'    || e'\n';
-    ¶r := ¶r || format( e'/*^11^*/    where bucket = %L and key = ¶key );'                    || e'\n', ¶bucket );
-    ¶r := ¶r ||         e'/*^12^*/  if array_length( ¶rows, 1 ) = 1 then'                     || e'\n';
-    ¶r := ¶r ||         e'/*^13^*/    ¶value := ¶rows[ 1 ];'                                  || e'\n';
-    ¶r := ¶r ||         e'/*^13^*/  else'                                                     || e'\n';
-    ¶r := ¶r ||         e'/*^13^*/    ¶value := null::jsonb;'                                 || e'\n';
-    ¶r := ¶r ||         e'/*^13^*/    end if;'                                                || e'\n';
+    ¶r := ¶r ||         e'/*^10^*/   -- Try to retrieve and return value from cache:'          || e'\n';
+    ¶r := ¶r ||         e'/*^11^*/   ¶rows := ( select array_agg( value ) from LAZY.cache'    || e'\n';
+    ¶r := ¶r || format( e'/*^12^*/    where bucket = %L and key = ¶key );'                    || e'\n', ¶bucket );
+    ¶r := ¶r ||         e'/*^13^*/  if array_length( ¶rows, 1 ) = 1 then'                     || e'\n';
+    ¶r := ¶r || format( e'/*^14^*/    return %s; end if;'                                     || e'\n', ¶v );
+    ¶r := ¶r ||         e'/*^15^*/  ¶value := null::jsonb;'                                   || e'\n';
     R  := R  || ¶r;
     -- .....................................................................................................
-    R  := R  ||         e'/*^14^*/  -- -----------------------------------------------------' || e'\n';
+    R  := R  ||         e'/*^16^*/  -- -----------------------------------------------------' || e'\n';
     if ( get_update is not null ) then
-      R  := R  ||         e'/*^16^*/  -- Compute value and put it into cache:'     || e'\n';
-      R  := R  || format( e'/*^15^*/  ¶value := %s( %s );'                                      || e'\n', get_update, ¶n );
-      R  := R  ||         e'/*^16^*/  insert into LAZY.cache ( bucket, key, value ) values'     || e'\n';
-      R  := R  || format( e'/*^17^*/    ( %L, ¶key, ¶value );'                                  || e'\n', ¶bucket );
-      R  := R  || format( e'/*^18^*/    return %s;'                                             || e'\n', ¶v );
+      R  := R  ||         e'/*^17^*/  -- Compute value and put it into cache:'                  || e'\n';
+      R  := R  || format( e'/*^18^*/  ¶value := %s( %s );'                                      || e'\n', get_update, ¶n );
+      R  := R  ||         e'/*^19^*/  insert into LAZY.cache ( bucket, key, value ) values'     || e'\n';
+      R  := R  || format( e'/*^20^*/    ( %L, ¶key, ¶value );'                                  || e'\n', ¶bucket );
+      R  := R  || format( e'/*^21^*/    return %s;'                                             || e'\n', ¶v );
     else
-      R  := R  || format( e'/*^19^*/  perform %s( %s );'                                        || e'\n', perform_update, ¶n );
+      R  := R  || format( e'/*^22^*/  perform %s( %s );'                                        || e'\n', perform_update, ¶n );
       R  := R  || ¶r;
-      R  := R  ||         e'/*^20^*/  -- ¶value := null::jsonb;'                                || e'\n';
-      R  := R  ||         e'/*^21^*/  insert into LAZY.cache ( bucket, key, value ) values'     || e'\n';
-      R  := R  || format( e'/*^22^*/    ( %L, ¶key, ¶value );'                                  || e'\n', ¶bucket );
-      R  := R  || format( e'/*^23^*/    return %s;'                                             || e'\n', ¶v );
+      R  := R  ||         e'/*^23^*/  insert into LAZY.cache ( bucket, key, value ) values'     || e'\n';
+      R  := R  || format( e'/*^24^*/    ( %L, ¶key, ¶value );'                                  || e'\n', ¶bucket );
+      R  := R  || format( e'/*^25^*/    return %s;'                                             || e'\n', ¶v );
       end if;
     -- -- .....................................................................................................
-    R  := R  ||         e'/*^24^*/  end; $f$;';
+    R  := R  ||         e'/*^26^*/  end; $f$;';
     -- .....................................................................................................
     execute R;
     return R;

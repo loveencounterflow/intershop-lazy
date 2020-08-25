@@ -6,7 +6,7 @@
 \ir './_trm.sql'
 -- \ir './set-signal-color.sql'
 -- \ir './test-begin.sql'
--- \pset pager on
+\pset pager off
 \timing off
 -- ---------------------------------------------------------------------------------------------------------
 begin transaction;

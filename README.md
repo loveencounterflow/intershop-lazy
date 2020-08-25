@@ -19,6 +19,7 @@
     - [Step 2: Create a Lazy Producer](#step-2-create-a-lazy-producer-1)
     - [Step 3: Use the Lazy Value Producer](#step-3-use-the-lazy-value-producer-1)
   - [Bonus: Setting up Custom Cache Views](#bonus-setting-up-custom-cache-views)
+- [Updates](#updates)
 - [To Do](#to-do)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -90,8 +91,8 @@ started.
 ### Step 1: Write an Eager Value Producer
 
 The first thing to do when one wants to use lazy evaluation with InterShop Lazy is to provide a function
-that accepts arguments as required and that returns a value that can be fed to PostGreSQL's `to_jsonb()`
-function so as to obtain a cachable value.
+that accepts arguments as required for the task at hand and that returns a value `v` of type `T` that will
+be serialized `v::text` and deserialized as `v::T`.
 
 Of course, using lazy evaluation makes only sense when one is dealing with costly computations, so typically
 an eager value producer would involve stuff like network access, sifting through huge tables or maybe
@@ -253,8 +254,8 @@ create function MYSCHEMA.insert_sums_single_row( ¶a integer, ¶b integer )
   returns void volatile called on null input language plpgsql as $$ begin
     raise notice 'MYSCHEMA.insert_sums( %, % )', ¶a, ¶b;
     insert into LAZY.cache ( bucket, key, value ) values
-      ( 'yeah! sums!', to_jsonb( array[ ¶a, ¶b ] ), to_jsonb( ¶a + ¶b ) );
-      -- ^^^^ bucket   ^^^^ key                     ^^^^ value
+      ( 'yeah! sums!', to_jsonb( array[ ¶a, ¶b ] ), ¶a + ¶b );
+      -- ^^^^ bucket   ^^^^ key                     ^^^^^^^ value
     end; $$;
 ```
 
@@ -270,10 +271,9 @@ create function MYSCHEMA.insert_sums( ¶a integer, ¶b integer )
     insert into LAZY.cache ( bucket, key, value ) select
         'yeah! sums!'                                 as bucket,
         r2.key                                        as key,
-        r3.value                                      as value
-      from generate_series( ¶b - 1, ¶b + 1 )        as r1 ( bb    ),
-      lateral to_jsonb( array[ ¶a, r1.bb ] )        as r2 ( key   ),
-      lateral to_jsonb( ¶a + r1.bb )                as r3 ( value )
+        ¶a + r1.bb                                    as value
+      from generate_series( ¶b - 1, ¶b + 1 )        as r1 ( bb  ),
+      lateral to_jsonb( array[ ¶a, r1.bb ] )        as r2 ( key ),
       where not exists ( select 1 from LAZY.cache as r4 where ( r4.key = r2.key ) );
     end; $$;
 ```
@@ -351,7 +351,7 @@ that `jsonb` has its own `null` value which, unlike SQL `null`, cannot be cast; 
 create view MYSCHEMA.products as ( select
       ( LAZY.nullify( key->0 ) )::float as n,
       ( LAZY.nullify( key->1 ) )::float as factor,
-      ( LAZY.nullify( value  ) )::float as product
+      ( value                  )::float as product
     from LAZY.cache
     where bucket = 'MYSCHEMA.get_product'
     order by n desc, factor desc );
@@ -374,10 +374,21 @@ create view MYSCHEMA.products as ( select
 ╚═════╧════════╧═════════╝
 ```
 
+# Updates
+
+* **v1.0.0**—Values are now stored as `text` rather than as `jsonb`, the reason being that
+  * all datatypes have a `text` serialization (this is mandatory as DB dumps could otherwise not be
+    produced), but not all datatypes can be expressed in JSON in a straightforward way, meaning customized
+    conversion functions `mytype_from_jsonb()` / `mytype_to_jsonb()` are needed where otherwise simple type
+    casts `myvalue::text` / `textvalue::mytype` would be sufficient.
+  * While quering `jsonb` values is much more flexible, one will typically search over keys, not results;
+    where quering against result values is needed, one can still cast the `text` values (e.g. in a
+    (materialized) view).
+
 # To Do
 
 * [X] Documentation
 * [X] Tests
-* [ ] consider to optionally use a text-based cache
+* [X] consider to optionally use a text-based cache
 
 

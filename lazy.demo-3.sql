@@ -23,94 +23,73 @@ drop schema if exists NLEX cascade; create schema NLEX;
 --
 -- ---------------------------------------------------------------------------------------------------------
 \echo :signal ———{ :filename 3 }———:reset
-create type NLEX.number_type as enum ( 'ordinal', 'cardinal' );
-create type NLEX.number_words as (
-  number      numeric,
-  type        NLEX.number_type,
-  language    text,
-  word        text );
+-- ---------------------------------------------------------------------------------------------------------
+create type NLEX.german_word as (
+  singular    text,
+  gender      text,
+  plural      text );
+
+-- ---------------------------------------------------------------------------------------------------------
+\echo :signal ———{ :filename 3 }———:reset
+create type NLEX.english_and_german as (
+  english     text,
+  german      NLEX.german_word );
 
 -- ---------------------------------------------------------------------------------------------------------
 \echo :signal ———{ :filename 3 }———:reset
 create view NLEX.lexicon as ( select
-      ( ( key->>0 )::numeric  ) as number,
-      ( key->>1               ) as type,
-      ( key->>2               ) as language,
-      ( value::text           ) as word
-    from LAZY.cache
-    where bucket = 'numericlexicon'
-    order by language, number, type );
+      key->>0               as english,
+      (r2.value).singular   as singular,
+      (r2.value).gender     as gender,
+      (r2.value).plural     as plural
+    from LAZY.cache                                 as r1,
+    lateral ( select r1.value::NLEX.german_word )   as r2
+    where bucket = 'lexicon/en/de'
+    order by english );
 
 -- ---------------------------------------------------------------------------------------------------------
 \echo :signal ———{ :filename 5 }———:reset
-create function NLEX.insert_number_word( ¶number numeric, ¶type NLEX.number_type, ¶language text )
+create function NLEX.insert_german_word( ¶english text )
   returns void volatile called on null input language plpgsql as $$
   declare
-    ¶word text;
+    ¶value NLEX.german_word;
   begin
-    case ¶language
-      -- ...................................................................................................
-      when 'en' then
-        case ¶type
-          when 'ordinal' then
-            case
-              when ¶number < 1 then ¶word = 'zeroth';
-              when ¶number = 3 then ¶word = 'third';
-              else ¶word = 'nth'; end case;
-          else
-            case
-              when ¶number < 1 then ¶word = 'small';
-              when ¶number = 3 then ¶word = 'three';
-              else ¶word = 'big'; end case;
-          end case;
-      -- ...................................................................................................
-      when 'de' then
-        case ¶type
-          when 'ordinal' then
-            case
-              when ¶number < 1 then ¶word = 'nullter';
-              when ¶number = 3 then ¶word = 'dritter';
-              else ¶word = 'nter'; end case;
-          else
-            case
-              when ¶number < 1 then ¶word = 'klein';
-              when ¶number = 3 then ¶word = 'drei';
-              else ¶word = 'gross'; end case;
-          end case;
-      else
-        ¶word := null;
-        end case;
-    raise notice using message = format( '^3334^ %L <- insert_number_word( %L, %L, %L )',
-      ¶word, ¶number, ¶type, ¶language );
+    case ¶english
+      when 'peacock'  then  ¶value := ( 'Pfau', 'm', 'Pfauen' )::NLEX.german_word;
+      when 'mouse'    then  ¶value := ( 'Maus', 'f', 'Mäuse'  )::NLEX.german_word;
+      when 'house'    then  ¶value := ( 'Haus', 'n', 'Häuser' )::NLEX.german_word;
+      else                  ¶value := null::NLEX.german_word;
+      end case;
+    raise notice using message = format( '^3334^ %L <- insert_german_word( %L )',
+      ¶value, ¶english );
     insert into LAZY.cache ( bucket, key, value ) values
-      ( 'numericlexicon', jsonb_build_array( ¶number, ¶type, ¶language ), ¶word );
+      ( 'lexicon/en/de', jsonb_build_array( ¶english ), ¶value );
     end; $$;
 
 
 -- ---------------------------------------------------------------------------------------------------------
 \echo :signal ———{ :filename 5 }———:reset
 select LAZY.create_lazy_producer(
-  function_name   => 'NLEX.get_number_word',
-  parameter_names => '{¶number,¶type,¶language}',
-  parameter_types => '{numeric,NLEX.number_type,text}',
-  return_type     => 'text',
-  bucket          => 'numericlexicon',
-  perform_update  => 'NLEX.insert_number_word' );
+  function_name   => 'NLEX.translate_to_german',
+  parameter_names => '{¶english}',
+  parameter_types => '{text}',
+  return_type     => 'NLEX.german_word',
+  bucket          => 'lexicon/en/de',
+  perform_update  => 'NLEX.insert_german_word' );
 
 create view NLEX.inputs as
-  ( select null::numeric as n, null::NLEX.number_type as type, null::text as language where false ) union all
+  ( select null::text as english where false ) union all
 values
-  ( 3, 'cardinal'::NLEX.number_type, 'de' ),
-  ( 3, 'cardinal'::NLEX.number_type, 'en' ),
-  ( 3, 'ordinal'::NLEX.number_type, 'de' ),
-  ( 3, 'ordinal'::NLEX.number_type, 'en' );
+  ( 'peacock' ),
+  ( 'mouse'   ),
+  ( 'house'   );
 
 select * from NLEX.inputs;
 
 select
     *
-  from NLEX.inputs                                            as r1 ( n, type, language ),
-  lateral NLEX.get_number_word( r1.n, r1.type, r1.language )  as r2;
+  from NLEX.inputs                                as r1 ( english ),
+  lateral NLEX.translate_to_german( r1.english )  as r2;
 \echo :reverse:steel' LAZY.cache '
 select * from LAZY.cache;
 \echo :reverse:steel' NLEX.lexicon '

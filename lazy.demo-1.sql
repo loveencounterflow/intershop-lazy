@@ -26,7 +26,7 @@ drop schema if exists MYSCHEMA cascade; create schema MYSCHEMA;
 create view MYSCHEMA.products as ( select
       ( LAZY.nullify( key->0 ) )::float as n,
       ( LAZY.nullify( key->1 ) )::float as factor,
-      ( LAZY.nullify( value  ) )::float as product
+      ( value                  )::float as product
     from LAZY.cache
     where bucket = 'MYSCHEMA.get_product'
     order by n desc, factor desc );

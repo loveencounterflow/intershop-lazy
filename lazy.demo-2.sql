@@ -26,7 +26,7 @@ drop schema if exists MYSCHEMA cascade; create schema MYSCHEMA;
 create view MYSCHEMA.sums as ( select
       ( LAZY.nullify( key->0 ) )::integer as a,
       ( LAZY.nullify( key->1 ) )::integer as b,
-      ( LAZY.nullify( value  ) )::integer as sum
+      ( value                  )::integer as sum
     from LAZY.cache
     where bucket = 'yeah! sums!'
     order by a desc, b desc );
@@ -37,7 +37,7 @@ create function MYSCHEMA.insert_sums_single_row( ¶a integer, ¶b integer )
   returns void volatile called on null input language plpgsql as $$ begin
     raise notice 'MYSCHEMA.insert_sums( %, % )', ¶a, ¶b;
     insert into LAZY.cache ( bucket, key, value ) values
-      ( 'yeah! sums!', to_jsonb( array[ ¶a, ¶b ] ), to_jsonb( ¶a + ¶b ) );
+      ( 'yeah! sums!', to_jsonb( array[ ¶a, ¶b ] ), ¶a + ¶b );
     end; $$;
 
 create function MYSCHEMA.insert_sums( ¶a integer, ¶b integer )
@@ -49,7 +49,7 @@ create function MYSCHEMA.insert_sums( ¶a integer, ¶b integer )
         r3.value                                      as value
       from generate_series( ¶b - 1, ¶b + 1 )        as r1 ( bb    ),
       lateral to_jsonb( array[ ¶a, r1.bb ] )        as r2 ( key   ),
-      lateral to_jsonb( ¶a + r1.bb )                as r3 ( value )
+      lateral ( select ¶a + r1.bb )                 as r3 ( value )
       where not exists ( select 1 from LAZY.cache as r4 where ( r4.key = r2.key ) );
     end; $$;
 

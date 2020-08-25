@@ -87,7 +87,7 @@ select * from LAZY.nullify( null::LAZY.jsonb_result );
 -- ---------------------------------------------------------------------------------------------------------
 drop schema if exists MYSCHEMA cascade; create schema MYSCHEMA;
 
-\echo :signal ———{ :filename 3 }———:reset
+\echo :signal ———{ :filename 2 }———:reset
 create view MYSCHEMA.products as ( select
       ( regexp_replace( key#>>'{}',    ' times .*$', '' ) )::integer as n,
       ( regexp_replace( key#>>'{}', '^.* times ',    '' ) )::integer as factor,
@@ -96,13 +96,13 @@ create view MYSCHEMA.products as ( select
     where bucket = 'MYSCHEMA.products' );
 
 -- ---------------------------------------------------------------------------------------------------------
-\echo :signal ———{ :filename 4 }———:reset
+\echo :signal ———{ :filename 3 }———:reset
 create function MYSCHEMA._get_product_key( ¶n integer, ¶factor integer )
   returns jsonb immutable strict language sql as $$ select
     ( format( '"%s times %s"', ¶n, ¶factor ) )::jsonb; $$;
 
 -- ---------------------------------------------------------------------------------------------------------
-\echo :signal ———{ :filename 5 }———:reset
+\echo :signal ———{ :filename 4 }———:reset
 -- ### NOTE consider to allow variant where update method returns key, value instead of inserting itself;
 -- the latter is more general as it may insert an arbitrary number of adjacent / related / whatever items
 create function MYSCHEMA._update_products_cache( ¶n integer, ¶factor integer, ¶bucket text default 'MYSCHEMA.products_1' )
@@ -245,7 +245,7 @@ select
 -- =========================================================================================================
 --
 -- ---------------------------------------------------------------------------------------------------------
-\echo :signal ———{ :filename 1 }———:reset
+\echo :signal ———{ :filename 7 }———:reset
 create table LAZY_X.probes_and_matchers_2 (
   id            bigint generated always as identity primary key,
   title         text,
@@ -255,7 +255,7 @@ create table LAZY_X.probes_and_matchers_2 (
   result        text );
 
 -- ---------------------------------------------------------------------------------------------------------
-\echo :signal ———{ :filename 1 }———:reset
+\echo :signal ———{ :filename 8 }———:reset
 -- insert into LAZY_X.probes_and_matchers_1 ( title, probe, matcher ) values
 --   ( 'get_product_1',             '{12,12}',         'helo'                      );
 -- update LAZY_X.probes_and_matchers_1 set result = LAZY.escape_text( probe ) where title = 'escape_text';
@@ -285,6 +285,7 @@ insert into LAZY_X.probes_and_matchers_2 ( title, probe_1, probe_2, matcher ) va
 
 
 -- ---------------------------------------------------------------------------------------------------------
+\echo :signal ———{ :filename 7 }———:reset
 do $outer$
   declare
     ¶fname  text;
@@ -305,6 +306,7 @@ do $outer$
 $outer$;
 
 -- ---------------------------------------------------------------------------------------------------------
+\echo :signal ———{ :filename 7 }———:reset
 create view LAZY_X.result_comparison as (
   with v1 as ( select
       *,
@@ -320,14 +322,15 @@ create view LAZY_X.result_comparison as (
       r4.is_ok
     from v1
     left join LAZY.cache as r2 on r2.key = v1.key,
-    lateral ( select matcher::jsonb                          )  as r3 ( result ),
-    lateral ( select coalesce( r3.result = r2.value, false ) )  as r4 ( is_ok )
+    lateral ( select matcher::integer                                 )  as r3 ( result ),
+    lateral ( select coalesce( r3.result = r2.value::integer, false ) )  as r4 ( is_ok )
     where v1.title = 'get_product_2'
     order by r2.key );
 
 select * from LAZY_X.result_comparison;
 
 -- ---------------------------------------------------------------------------------------------------------
+\echo :signal ———{ :filename 7 }———:reset
 insert into INVARIANTS.tests select
     'LAZY'                                                              as module,
     title                                                               as title,
@@ -336,6 +339,7 @@ insert into INVARIANTS.tests select
   from LAZY_X.probes_and_matchers_2 as r1;
 
 -- ---------------------------------------------------------------------------------------------------------
+\echo :signal ———{ :filename 7 }———:reset
 /* making sure that all tests get an entry in LAZY.cache: */
 insert into INVARIANTS.tests select
     'LAZY'                                                              as module,

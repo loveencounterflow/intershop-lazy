@@ -23,7 +23,7 @@ drop schema if exists LAZY cascade; create schema LAZY;
 create table LAZY.cache (
   bucket        text              not null,
   key           jsonb             not null,
-  value         jsonb,
+  value         text,
   primary key ( bucket, key ) );
 
 -- ---------------------------------------------------------------------------------------------------------
@@ -44,12 +44,12 @@ create function LAZY.on_before_update_cache() returns trigger language plpgsql a
 create trigger on_before_update_cache before update on LAZY.cache
   for each row execute procedure LAZY.on_before_update_cache();
 
--- ---------------------------------------------------------------------------------------------------------
-\echo :signal ———{ :filename 3 }———:reset
-create function LAZY.on_before_insert_cache() returns trigger language plpgsql as $$ begin
-  return ( new.bucket, new.key, LAZY.nullify( new.value ) )::LAZY.cache; end; $$;
-create trigger on_before_insert_cache before insert on LAZY.cache
-  for each row execute procedure LAZY.on_before_insert_cache();
+-- -- ---------------------------------------------------------------------------------------------------------
+-- \echo :signal ———{ :filename 3 }———:reset
+-- create function LAZY.on_before_insert_cache() returns trigger language plpgsql as $$ begin
+--   return ( new.bucket, new.key, LAZY.nullify( new.value ) )::LAZY.cache; end; $$;
+-- create trigger on_before_insert_cache before insert on LAZY.cache
+--   for each row execute procedure LAZY.on_before_insert_cache();
 
 
 -- =========================================================================================================
@@ -113,8 +113,8 @@ create function LAZY.create_lazy_producer(
     R  := R  ||         e'/*^3^*/   called on null input volatile language plpgsql as $f$'    || e'\n';
     R  := R  ||         e'/*^4^*/   declare'                                                  || e'\n';
     R  := R  || format( e'/*^5^*/     ¶key    jsonb := %s;'                                   || e'\n', ¶k );
-    R  := R  ||         e'/*^6^*/     ¶rows   jsonb[];'                                       || e'\n';
-    R  := R  ||         e'/*^7^*/     ¶value  jsonb;'                                         || e'\n';
+    R  := R  || format( e'/*^6^*/     ¶rows   %s[];'                                          || e'\n', return_type );
+    R  := R  || format( e'/*^7^*/     ¶value  %s;'                                            || e'\n', return_type );
     R  := R  ||         e'/*^8^*/   begin'                                                    || e'\n';
     -- .....................................................................................................
     ¶r := '';
@@ -124,7 +124,7 @@ create function LAZY.create_lazy_producer(
     ¶r := ¶r || format( e'/*^12^*/    where bucket = %L and key = ¶key );'                    || e'\n', ¶bucket );
     ¶r := ¶r ||         e'/*^13^*/  if array_length( ¶rows, 1 ) = 1 then'                     || e'\n';
     ¶r := ¶r || format( e'/*^14^*/    return %s; end if;'                                     || e'\n', ¶v );
-    ¶r := ¶r ||         e'/*^15^*/  ¶value := null::jsonb;'                                   || e'\n';
+    ¶r := ¶r || format( e'/*^15^*/  ¶value := null::%s;'                                      || e'\n', return_type );
     R  := R  || ¶r;
     -- .....................................................................................................
     R  := R  ||         e'/*^16^*/  -- -----------------------------------------------------' || e'\n';
@@ -132,13 +132,13 @@ create function LAZY.create_lazy_producer(
       R  := R  ||         e'/*^17^*/  -- Compute value and put it into cache:'                  || e'\n';
       R  := R  || format( e'/*^18^*/  ¶value := %s( %s );'                                      || e'\n', get_update, ¶n );
       R  := R  ||         e'/*^19^*/  insert into LAZY.cache ( bucket, key, value ) values'     || e'\n';
-      R  := R  || format( e'/*^20^*/    ( %L, ¶key, ¶value );'                                  || e'\n', ¶bucket );
+      R  := R  || format( e'/*^20^*/    ( %L, ¶key, ¶value::text );'                            || e'\n', ¶bucket );
       R  := R  || format( e'/*^21^*/    return %s;'                                             || e'\n', ¶v );
     else
       R  := R  || format( e'/*^22^*/  perform %s( %s );'                                        || e'\n', perform_update, ¶n );
       R  := R  || ¶r;
       R  := R  ||         e'/*^23^*/  insert into LAZY.cache ( bucket, key, value ) values'     || e'\n';
-      R  := R  || format( e'/*^24^*/    ( %L, ¶key, ¶value );'                                  || e'\n', ¶bucket );
+      R  := R  || format( e'/*^24^*/    ( %L, ¶key, ¶value::text );'                            || e'\n', ¶bucket );
       R  := R  || format( e'/*^25^*/    return %s;'                                             || e'\n', ¶v );
       end if;
     -- -- .....................................................................................................

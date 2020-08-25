@@ -254,7 +254,7 @@ create function MYSCHEMA.insert_sums_single_row( ¶a integer, ¶b integer )
   returns void volatile called on null input language plpgsql as $$ begin
     raise notice 'MYSCHEMA.insert_sums( %, % )', ¶a, ¶b;
     insert into LAZY.cache ( bucket, key, value ) values
-      ( 'yeah! sums!', to_jsonb( array[ ¶a, ¶b ] ), ¶a + ¶b );
+      ( 'yeah! sums!', jsonb_build_array( ¶a, ¶b ), ¶a + ¶b );
       -- ^^^^ bucket   ^^^^ key                     ^^^^^^^ value
     end; $$;
 ```
@@ -273,7 +273,7 @@ create function MYSCHEMA.insert_sums( ¶a integer, ¶b integer )
         r2.key                                        as key,
         ¶a + r1.bb                                    as value
       from generate_series( ¶b - 1, ¶b + 1 )        as r1 ( bb  ),
-      lateral to_jsonb( array[ ¶a, r1.bb ] )        as r2 ( key ),
+      lateral jsonb_build_array( ¶a, r1.bb )        as r2 ( key ),
       where not exists ( select 1 from LAZY.cache as r4
         where ( bucket = 'yeah! sums!' ) and ( r4.key = r2.key ) );
     end; $$;

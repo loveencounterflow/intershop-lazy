@@ -50,7 +50,8 @@ create function MYSCHEMA.insert_sums( ¶a integer, ¶b integer )
       from generate_series( ¶b - 1, ¶b + 1 )        as r1 ( bb    ),
       lateral to_jsonb( array[ ¶a, r1.bb ] )        as r2 ( key   ),
       lateral ( select ¶a + r1.bb )                 as r3 ( value )
-      where not exists ( select 1 from LAZY.cache as r4 where ( r4.key = r2.key ) );
+      where not exists ( select 1 from LAZY.cache as r4
+        where ( bucket = 'yeah! sums!' ) and ( r4.key = r2.key ) );
     end; $$;
 
 -- ---------------------------------------------------------------------------------------------------------

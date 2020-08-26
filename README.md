@@ -420,6 +420,26 @@ create view MYSCHEMA.products as ( select
 
 * [X] Documentation
 * [X] Tests
-* [X] consider to optionally use a text-based cache
-
+* [X] `feat:txtcache`—consider to optionally use a text-based cache
+* [ ] <strike>`feat:hashidx`—implement Hash indexes on `bucket`, `key` (only interested in equality,
+  otherwise might use BTree)</strike> (dropped in preference for `feat:remgetupdate`, `feat:dedicache`)
+* [ ] `feat:remgetupdate`—remove parameter `get_update`, always use `perform_update` (rename to
+  `insert_rows` or `producer` as function will not perform SQL `update`s but `insert`s)
+* [ ] `feat:remgetkey`—remove parameter `get_key`? This would naturally fall out of `feat:dedicache`
+* [ ] `feat:dedicache`—consider to always generate a dedicated cache table with the appropriate columns as
+  per value producer arguments, including index; in that case, may also move from using a serialized-value
+  column to using any number of result columns (which could be indexed if need be, but should be done
+  manually by user)
+  * [ ] `feat:dedicache/return_type`—abolish, should use `input_names`, `input_types`, `output_names`,
+    `output_types`, (or else `key_names`, ... `value_names`, ...). Input and output names become names for
+    columns of dedicated cache table. Insofar maybe advantageous to adopt
+    `feat:dedicache/optcreatecache:never`, instead require user sets up dedicated cache table, then just
+    passes in name of that table, we can then derive input parameters from primary key of that table
+  * [ ] `feat:dedicache/optcreatecache`—should cache table never / optionally / always be created
+    automatically? Could require user to manually create cache, only provide generated function that
+    simplifies using that cache. Start by implementing only case `create_cache = false`, allow `create_cache
+    = true` later
+  * [ ] `feat:dedicache/docdeforder`—document that producer must be defined only *after*
+    `create_lazy_producer()` has been called and cache table established, otherwise produce would refer to
+    non-existant DB object
 
